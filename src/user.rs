@@ -27,11 +27,6 @@ pub struct UserLoginSchema {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct GenerateOTPSchema {
-    pub username: String,
-}
-
-#[derive(Debug, Deserialize)]
 pub struct VerifyOTPSchema {
     pub username: String,
     pub token: String,

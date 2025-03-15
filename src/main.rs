@@ -4,7 +4,7 @@ mod schema;
 mod user;
 
 use crate::helper::fetch_invite_code_admin;
-use crate::user::{GenerateOTPSchema, InviteCodeAdmin, InviteCodeAdminData, VerifyOTPSchema};
+use crate::user::{InviteCodeAdmin, InviteCodeAdminData, VerifyOTPSchema};
 use actix_web::dev::Server;
 use actix_web::web::{Data, service};
 use actix_web::{App, HttpResponse, HttpServer, Responder, get, middleware, post, web};
@@ -79,21 +79,34 @@ async fn login_user(
                 message: format!("No user with username: {} found", body.username),
             };
 
-            return HttpResponse::NotFound().json(json_error)
+            HttpResponse::NotFound().json(json_error)
         }
         Some(user) => {
-            return HttpResponse::NotFound().json(())
+            session.renew();
+            session
+                .insert("username", body.username.clone())
+                .expect("User ID failed to insert");
+            HttpResponse::Ok().json(())
         }
     }
 }
 
 #[post("/auth/otp/generate")]
-async fn generate_otp_handler(body: Json<GenerateOTPSchema>, data: Data<DBPool>) -> impl Responder {
-    let user = fetch_invite_code_admin(&mut data.get().unwrap(), body.username.as_str());
+async fn generate_otp_handler(
+    data: Data<DBPool>,
+    session: actix_session::Session,
+) -> impl Responder {
+    let username: String;
+    match get_user_id(session) {
+        Ok(val) => username = val,
+        Err(val) => return val,
+    }
+
+    let user = fetch_invite_code_admin(&mut data.get().unwrap(), username.as_str());
     if user.is_none() {
         let json_error = GenericResponse {
             status: "fail".to_string(),
-            message: format!("No user with username: {} found", body.username),
+            message: format!("No user with username: {} found", username),
         };
 
         return HttpResponse::NotFound().json(json_error);
@@ -113,7 +126,7 @@ async fn generate_otp_handler(body: Json<GenerateOTPSchema>, data: Data<DBPool>)
     .unwrap();
 
     let otp_base32 = totp.get_secret_base32();
-    let username = body.username.to_owned();
+    let username = username.to_owned();
     let issuer = "InviteCodeManager";
     let otp_auth_url =
         format!("otpauth://totp/{issuer}:{username}?secret={otp_base32}&issuer={issuer}");
@@ -128,7 +141,11 @@ async fn generate_otp_handler(body: Json<GenerateOTPSchema>, data: Data<DBPool>)
 }
 
 #[post("/auth/otp/verify")]
-async fn verify_otp_handler(body: Json<VerifyOTPSchema>, data: Data<DBPool>) -> impl Responder {
+async fn verify_otp_handler(
+    body: Json<VerifyOTPSchema>,
+    data: Data<DBPool>,
+    session: actix_session::Session,
+) -> impl Responder {
     let user = fetch_invite_code_admin(&mut data.get().unwrap(), body.username.as_str());
     if user.is_none() {
         let json_error = GenericResponse {
@@ -171,7 +188,11 @@ async fn verify_otp_handler(body: Json<VerifyOTPSchema>, data: Data<DBPool>) -> 
 }
 
 #[post("/auth/otp/validate")]
-async fn validate_otp_handler(body: Json<VerifyOTPSchema>, data: Data<DBPool>) -> impl Responder {
+async fn validate_otp_handler(
+    body: Json<VerifyOTPSchema>,
+    data: Data<DBPool>,
+    session: actix_session::Session,
+) -> impl Responder {
     let user = fetch_invite_code_admin(&mut data.get().unwrap(), body.username.as_str());
     if user.is_none() {
         let json_error = GenericResponse {
@@ -210,6 +231,9 @@ async fn validate_otp_handler(body: Json<VerifyOTPSchema>, data: Data<DBPool>) -
             .json(json!({"status": "fail", "message": "Token is invalid or user doesn't exist"}));
     }
 
+    session
+        .insert("otp_validated", body.username.clone())
+        .expect("User ID failed to insert");
     HttpResponse::Ok().json(json!({"otp_valid": true}))
 }
 
@@ -217,6 +241,7 @@ async fn validate_otp_handler(body: Json<VerifyOTPSchema>, data: Data<DBPool>) -
 async fn create_invite_codes_handler(
     body: Json<VerifyOTPSchema>,
     data: Data<DBPool>,
+    session: actix_session::Session,
 ) -> impl Responder {
     let user = fetch_invite_code_admin(&mut data.get().unwrap(), body.username.as_str());
     if user.is_none() {
@@ -263,6 +288,7 @@ async fn create_invite_codes_handler(
 async fn get_invite_codes_handler(
     body: Json<VerifyOTPSchema>,
     data: Data<DBPool>,
+    session: actix_session::Session,
 ) -> impl Responder {
     let user = fetch_invite_code_admin(&mut data.get().unwrap(), body.username.as_str());
     if user.is_none() {
@@ -320,11 +346,7 @@ async fn main() -> io::Result<()> {
     let db_pool = init_db(database_url.as_str(), db_min_idle.as_str());
 
     // Start Http Server
-    let server = init_http_server(
-        db_pool,
-        server_port.as_str(),
-        worker_count.as_str(),
-    );
+    let server = init_http_server(db_pool, server_port.as_str(), worker_count.as_str());
     server.await
 }
 
@@ -428,3 +450,13 @@ fn invite_code_admin_to_response(user: &InviteCodeAdmin) -> InviteCodeAdminData 
 //         Err(e) => Err(format!("{e}")),
 //     }
 // }
+
+fn get_user_id(session: actix_session::Session) -> Result<String, HttpResponse> {
+    return match session.get("username") {
+        Ok(user_id_key) => match user_id_key {
+            None => Err(HttpResponse::Unauthorized().finish()),
+            Some(id) => Ok(id),
+        },
+        Err(_e) => Err(HttpResponse::InternalServerError().finish()),
+    };
+}
