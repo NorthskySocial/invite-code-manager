@@ -1,0 +1,45 @@
+use crate::helper::fetch_invite_code_admin;
+use crate::routes::{invite_code_admin_to_response, DBPool};
+use crate::{GenericResponse, LoginUser};
+use actix_web::web::{Data, Json};
+use actix_web::{post, HttpResponse};
+use diesel::row::NamedRow;
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize)]
+pub struct LoginResponse {
+    pub status: String,
+}
+
+#[post("/auth/login")]
+async fn login_user(
+    data: Data<DBPool>,
+    body: Json<LoginUser>,
+    session: actix_session::Session,
+) -> HttpResponse {
+    let user = fetch_invite_code_admin(&mut data.get().unwrap(), body.username.as_str());
+    match user {
+        None => {
+            let json_error = GenericResponse {
+                status: "fail".to_string(),
+                message: format!("No user with username: {} found", body.username),
+            };
+
+            HttpResponse::NotFound().json(json_error)
+        }
+        Some(user) => {
+            session.renew();
+            session
+                .insert("username", body.username.clone())
+                .expect("Username failed to insert");
+            if user.otp_enabled == 1 {
+                session
+                    .insert("otp_enabled", "y")
+                    .expect("OTP failed to insert");
+            }
+
+            let response = invite_code_admin_to_response(&user);
+            HttpResponse::Ok().json(response)
+        }
+    }
+}
