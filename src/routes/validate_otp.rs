@@ -1,7 +1,6 @@
 use crate::GenericResponse;
-use crate::helper::DBPool;
 use crate::user::{InviteCodeAdmin, VerifyOTPSchema};
-use actix_web::web::{Data, Json};
+use actix_web::web::Json;
 use actix_web::{HttpResponse, Responder, post};
 use serde_json::json;
 use totp_rs::{Algorithm, Secret, TOTP};
@@ -9,7 +8,6 @@ use totp_rs::{Algorithm, Secret, TOTP};
 #[post("/auth/otp/validate")]
 async fn validate_otp_handler(
     body: Json<VerifyOTPSchema>,
-    data: Data<DBPool>,
     invite_code_admin: InviteCodeAdmin,
     session: actix_session::Session,
 ) -> impl Responder {

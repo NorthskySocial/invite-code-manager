@@ -6,5 +6,5 @@ CREATE TABLE invite_code_admin
     otp_base32   VARCHAR,
     otp_auth_url VARCHAR,
     otp_enabled  INTEGER NOT NULL DEFAULT 0,
-    otp_verified INTEGER NOT NULL DEFAULT 0,
+    otp_verified INTEGER NOT NULL DEFAULT 0
 );

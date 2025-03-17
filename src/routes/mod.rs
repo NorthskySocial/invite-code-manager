@@ -1,4 +1,3 @@
-use crate::GET_INVITE_CODES;
 use crate::user::{InviteCodeAdmin, InviteCodeAdminData};
 use actix_web::HttpResponse;
 use diesel::SqliteConnection;
@@ -43,32 +42,6 @@ pub struct InviteCodes {
     pub codes: Vec<Code>,
 }
 
-async fn get_invite_codes() -> Result<Vec<Code>, ()> {
-    let mut codes: Vec<Code> = vec![];
-    let client = reqwest::Client::new();
-    let res = client
-        .get("https://pds.ripperoni.com".to_string() + GET_INVITE_CODES)
-        .header("Content-Type", "application/json")
-        .basic_auth("admin", Some("password"))
-        .send()
-        .await
-        .unwrap();
-    if !res.status().is_success() {
-        panic!("not success")
-    }
-    let invite_codes = res.json::<InviteCodes>().await;
-    match invite_codes {
-        Ok(invite_codes) => {
-            codes.append(&mut invite_codes.codes.clone());
-        }
-        Err(e) => {
-            eprintln!("{}", e);
-            panic!("Invite Codes")
-        }
-    }
-    Ok(codes)
-}
-
 #[derive(Serialize)]
 pub struct GenericResponse {
     pub status: String,
@@ -85,43 +58,12 @@ fn invite_code_admin_to_response(user: &InviteCodeAdmin) -> InviteCodeAdminData 
     }
 }
 
-// #[post("/logout/")]
-// pub async fn log_out(session: actix_session::Session) -> HttpResponse {
-//     match session_user_id(&session).await {
-//         Ok(_) => {
-//             tracing::event!(target: "backend", tracing::Level::INFO, "Users retrieved from the DB.");
-//             session.purge();
-//             actix_web::HttpResponse::Ok().json(crate::types::SuccessResponse {
-//                 message: "You have successfully logged out".to_string(),
-//             })
-//         }
-//         Err(e) => {
-//             tracing::event!(target: "backend",tracing::Level::ERROR, "Failed to get user from session: {:#?}", e);
-//             HttpResponse::BadRequest().json(crate::types::ErrorResponse {
-//                 error:
-//                     "We currently have some issues. Kindly try again and ensure you are logged in"
-//                         .to_string(),
-//             })
-//         }
-//     }
-// }
-
-// async fn session_user_id(session: &actix_session::Session) -> Result<String, String> {
-//     match session.get(crate::types::USER_ID_KEY) {
-//         Ok(user_id) => match user_id {
-//             None => Err("You are not authenticated".to_string()),
-//             Some(id) => Ok(id),
-//         },
-//         Err(e) => Err(format!("{e}")),
-//     }
-// }
-
 fn get_user_id(session: actix_session::Session) -> Result<String, HttpResponse> {
-    return match session.get("username") {
+    match session.get("username") {
         Ok(user_id_key) => match user_id_key {
             None => Err(HttpResponse::Unauthorized().finish()),
             Some(id) => Ok(id),
         },
         Err(_e) => Err(HttpResponse::InternalServerError().finish()),
-    };
+    }
 }

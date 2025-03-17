@@ -1,11 +1,8 @@
 use crate::CREATE_INVITE_CODES;
 use crate::config::Config;
-use crate::helper::DBPool;
-use crate::routes::InviteCodes;
 use crate::user::{CreateInviteCodeSchema, InviteCodeAdmin};
 use actix_web::web::{Data, Json};
 use actix_web::{HttpResponse, post};
-use serde_json::json;
 
 #[post("/create-invite-codes")]
 async fn create_invite_codes_handler(
@@ -28,16 +25,6 @@ async fn create_invite_codes_handler(
     if !res.status().is_success() {
         panic!("not success")
     }
-    let invite_codes = res.json::<InviteCodes>().await;
-    match invite_codes {
-        Ok(invite_codes) => {
-            // codes_tx.send(invite_codes).unwrap();
-        }
-        Err(error) => {
-            eprintln!("{}", error);
-            return HttpResponse::InternalServerError().finish();
-        }
-    }
 
-    HttpResponse::Ok().json(json!({"otp_valid": true}))
+    HttpResponse::Ok().json(())
 }

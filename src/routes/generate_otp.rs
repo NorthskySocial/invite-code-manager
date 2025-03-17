@@ -3,7 +3,6 @@ use crate::helper::{DBPool, fetch_invite_code_admin, update_otp};
 use crate::routes::get_user_id;
 use actix_web::web::Data;
 use actix_web::{HttpResponse, Responder, post};
-use diesel::row::NamedRow;
 use rand::Rng;
 use serde_json::json;
 use totp_rs::{Algorithm, Secret, TOTP};
@@ -13,11 +12,10 @@ async fn generate_otp_handler(
     data: Data<DBPool>,
     session: actix_session::Session,
 ) -> impl Responder {
-    let username: String;
-    match get_user_id(session) {
-        Ok(val) => username = val,
+    let username: String = match get_user_id(session) {
+        Ok(val) => val,
         Err(val) => return val,
-    }
+    };
 
     let user = fetch_invite_code_admin(&mut data.get().unwrap(), username.as_str());
     let user = match user {
@@ -32,7 +30,7 @@ async fn generate_otp_handler(
         Some(user) => user,
     };
 
-    if user.otp_enabled {
+    if user.otp_verified == 1 {
         return HttpResponse::BadRequest().json(());
     }
 

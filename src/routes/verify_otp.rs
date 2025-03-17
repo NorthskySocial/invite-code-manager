@@ -1,10 +1,9 @@
-use crate::helper::{verify_otp, DBPool};
+use crate::GenericResponse;
+use crate::helper::{DBPool, verify_otp};
 use crate::routes::invite_code_admin_to_response;
 use crate::user::{InviteCodeAdmin, VerifyOTPSchema};
-use crate::GenericResponse;
 use actix_web::web::{Data, Json};
-use actix_web::{post, HttpResponse, Responder};
-use diesel::row::NamedRow;
+use actix_web::{HttpResponse, Responder, post};
 use serde_json::json;
 use totp_rs::{Algorithm, Secret, TOTP};
 

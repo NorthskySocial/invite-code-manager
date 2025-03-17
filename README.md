@@ -3,3 +3,8 @@
 
 ## Overview
 Backend Application that acts as a middleman to manage invite codes. Purpose is to avoid having to share the admin password for the PDS with many users
+
+## What Needs Work
+- Proper error handling
+- Reorganize code to clean up
+- Much more

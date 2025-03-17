@@ -1,9 +1,8 @@
 use crate::helper::fetch_invite_code_admin;
-use crate::routes::{invite_code_admin_to_response, DBPool};
+use crate::routes::{DBPool, invite_code_admin_to_response};
 use crate::{GenericResponse, LoginUser};
 use actix_web::web::{Data, Json};
-use actix_web::{post, HttpResponse};
-use diesel::row::NamedRow;
+use actix_web::{HttpResponse, post};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -32,14 +31,16 @@ async fn login_user(
             session
                 .insert("username", body.username.clone())
                 .expect("Username failed to insert");
-            if user.otp_enabled == 1 {
+            if user.otp_verified == 1 {
                 session
                     .insert("otp_enabled", "y")
                     .expect("OTP failed to insert");
+                let response = invite_code_admin_to_response(&user);
+                HttpResponse::Ok().json(response)
+            } else {
+                let response = invite_code_admin_to_response(&user);
+                HttpResponse::Created().json(response)
             }
-
-            let response = invite_code_admin_to_response(&user);
-            HttpResponse::Ok().json(response)
         }
     }
 }

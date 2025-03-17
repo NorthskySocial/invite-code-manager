@@ -8,26 +8,22 @@ mod user;
 use crate::config::Config;
 use crate::routes::GenericResponse;
 use crate::routes::create_invite_codes::create_invite_codes_handler;
+use crate::routes::disable_invite_codes::disable_invite_codes_handler;
 use crate::routes::generate_otp::generate_otp_handler;
+use crate::routes::get_invite_codes::get_invite_codes_handler;
 use crate::routes::login::login_user;
 use crate::routes::validate_otp::validate_otp_handler;
 use crate::routes::verify_otp::verify_otp_handler;
 use actix_web::web::Data;
-use actix_web::{App, HttpServer, Responder, middleware};
+use actix_web::{App, HttpServer, middleware};
 use diesel::SqliteConnection;
 use diesel::r2d2::{ConnectionManager, Pool};
-use diesel::row::NamedRow;
 use dotenvy::dotenv;
-use rand::Rng;
-use serde::{Deserialize, Serialize};
 use std::{env, io};
-use crate::routes::disable_invite_codes::disable_invite_codes_handler;
-use crate::routes::get_invite_codes::get_invite_codes_handler;
 
 const GET_INVITE_CODES: &str = "/xrpc/com.atproto.admin.getInviteCodes";
 const DISABLE_INVITE_CODES: &str = "/xrpc/com.atproto.admin.disableInviteCodes";
-const CREATE_INVITE_CODE: &str = "/xrpc/com.atproto.admin.server.createInviteCode";
-const CREATE_INVITE_CODES: &str = "/xrpc/com.atproto.admin.server.createInviteCodes";
+const CREATE_INVITE_CODES: &str = "/xrpc/com.atproto.server.createInviteCodes";
 
 #[derive(serde::Deserialize, Debug, serde::Serialize)]
 pub struct LoginUser {

@@ -1,10 +1,12 @@
 use crate::error::AuthError;
-use crate::helper::{DBPooledConnection, fetch_invite_code_admin_by_session};
+use crate::helper::DBPool;
+use crate::schema::invite_code_admin::username;
+use actix_session::SessionExt;
 use actix_web::dev::Payload;
-use actix_web::error::{ErrorBadRequest, ErrorInternalServerError, ErrorUnauthorized, HttpError};
-use actix_web::http::header::{HeaderValue, ToStrError};
-use actix_web::{FromRequest, HttpMessage, HttpRequest, http};
-use diesel::{Insertable, Queryable, Selectable};
+use actix_web::error::ErrorInternalServerError;
+use actix_web::web::Data;
+use actix_web::{FromRequest, HttpRequest};
+use diesel::{Insertable, QueryDsl, Queryable, RunQueryDsl, Selectable, SelectableHelper};
 use serde::{Deserialize, Serialize};
 use std::future::{Ready, ready};
 
@@ -21,25 +23,7 @@ pub struct InviteCodeAdmin {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct UserRegisterSchema {
-    pub name: String,
-    pub email: String,
-    pub password: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct UserLoginSchema {
-    pub email: String,
-    pub password: String,
-}
-
-#[derive(Debug, Deserialize)]
 pub struct VerifyOTPSchema {
-    pub token: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct ValidateOTPSchema {
     pub token: String,
 }
 
@@ -57,25 +41,9 @@ impl FromRequest for InviteCodeAdmin {
     type Future = Ready<Result<Self, Self::Error>>;
 
     fn from_request(req: &HttpRequest, _payload: &mut Payload) -> Self::Future {
-        let auth_header = match req.headers().get("Authorization") {
-            None => {
-                return ready(Err(ErrorUnauthorized(AuthError {
-                    status: "".to_string(),
-                    message: "".to_string(),
-                })));
-            }
-            Some(auth_header) => match auth_header.to_str() {
-                Ok(auth_header) => auth_header.to_owned(),
-                Err(e) => {
-                    println!("{}", e);
-                    return ready(Err(ErrorUnauthorized(AuthError {
-                        status: "".to_string(),
-                        message: "".to_string(),
-                    })));
-                }
-            },
-        };
-        let db = match req.app_data::<DBPooledConnection>() {
+        let i = req.get_session().get::<String>("username").unwrap();
+        let _username = i.unwrap();
+        let db = match req.app_data::<Data<DBPool>>() {
             None => {
                 return ready(Err(ErrorInternalServerError(AuthError {
                     status: "".to_string(),
@@ -84,8 +52,15 @@ impl FromRequest for InviteCodeAdmin {
             }
             Some(conn) => conn.to_owned(),
         };
-        let invite_code_admin = Ok(fetch_invite_code_admin_by_session(db, auth_header.as_str()));
-        ready(invite_code_admin)
+
+        use crate::schema::invite_code_admin::dsl::invite_code_admin;
+        use diesel::ExpressionMethods;
+        let results = invite_code_admin
+            .filter(username.eq(_username))
+            .select(InviteCodeAdmin::as_select())
+            .load(&mut db.get().unwrap())
+            .expect("DB Exception");
+        ready(Ok(results.first().unwrap().clone()))
     }
 }
 
@@ -107,13 +82,4 @@ pub struct CreateInviteCodeResponseSchema {
 pub struct DisableInviteCodeSchema {
     pub codes: Vec<String>,
     pub accounts: Vec<String>,
-}
-
-#[derive(Queryable, Selectable, Clone, Debug, Deserialize, Serialize, Insertable)]
-#[diesel(table_name = crate::schema::user_session)]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
-pub struct UserSession {
-    pub username: String,
-    pub otp_verified: i32,
-    pub active: i32,
 }

@@ -4,7 +4,6 @@ use crate::routes::InviteCodes;
 use crate::user::InviteCodeAdmin;
 use actix_web::web::Data;
 use actix_web::{HttpResponse, Responder, get};
-use diesel::row::NamedRow;
 
 #[get("/invite-codes")]
 async fn get_invite_codes_handler(
@@ -27,7 +26,7 @@ async fn get_invite_codes_handler(
     }
     let invite_codes = res.json::<InviteCodes>().await;
     match invite_codes {
-        Ok(invite_codes) => HttpResponse::Ok().json(invite_codes.codes),
+        Ok(invite_codes) => HttpResponse::Ok().json(invite_codes),
         Err(error) => {
             eprintln!("{}", error);
             HttpResponse::InternalServerError().finish()
