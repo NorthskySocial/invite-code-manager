@@ -19,7 +19,7 @@ async fn get_invite_codes_handler(
         .await
     {
         Ok(res) => res,
-        Err(error) => return HttpResponse::InternalServerError().finish(),
+        Err(_error) => return HttpResponse::InternalServerError().finish(),
     };
     if !res.status().is_success() {
         panic!("not success")

@@ -62,9 +62,6 @@ async fn main() -> io::Result<()> {
     let config = Config {
         pds_admin_password,
         pds_endpoint,
-        database_url,
-        db_min_idle,
-        worker_count,
     };
 
     // Start Http Server

@@ -20,7 +20,7 @@ pub fn fetch_invite_code_admin(
     if results.is_empty() {
         None
     } else {
-        Some(results.get(0).unwrap().clone())
+        Some(results.first().unwrap().clone())
     }
 }
 
