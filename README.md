@@ -14,6 +14,20 @@ cp .env.sample .env
 nano .env # or use your favorite editor
 ```
 
+Run the migrations to set up the SQLite database. You will need to have [Diesel CLI](https://diesel.rs/guides/getting-started#installing-diesel-cli) installed.
+
+If you don't have it installed, you can do so with the following command (or read more in the link above):
+
+```bash
+cargo install diesel_cli --no-default-features --features sqlite
+```
+
+To run the migrations, use the following command:
+
+```bash
+diesel migration run
+```
+
 Then, use `cargo` to run the application:
 
 ```bash
