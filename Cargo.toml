@@ -22,3 +22,4 @@ uuid = { version = "1.16.0", features = ["v4"] }
 bcrypt = "0.17.0"
 base64 = "0.22.1"
 log = "0.4.26"
+rpassword = "7.4.0"

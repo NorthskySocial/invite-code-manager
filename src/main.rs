@@ -1,3 +1,4 @@
+mod cli;
 mod config;
 mod error;
 mod helper;
@@ -58,6 +59,24 @@ async fn main() -> io::Result<()> {
 
     // Create DB Pool
     let db_pool = init_db(database_url.as_str(), db_min_idle.as_str());
+
+    // Check for CLI commands (if none are provided, start the server instead)
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() > 1 {
+        match args[1].as_str() {
+            "create-user" => {
+                let mut conn = db_pool.get().expect("Failed to get DB connection");
+                if let Err(e) = cli::create_user(&mut conn) {
+                    eprintln!("Error creating user: {}", e);
+                }
+                return Ok(());
+            }
+            _ => {
+                println!("Unknown command: {}", args[1]);
+                return Ok(());
+            }
+        }
+    }
 
     // Setup Config
     let config = Config {

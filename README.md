@@ -5,7 +5,11 @@
 
 Backend Application that acts as a middleman to manage invite codes. Purpose is to avoid having to share the admin password for the PDS with many users
 
-## Usage
+## Setup
+
+To set up the application, you will need to have [Rust](https://www.rust-lang.org/tools/install) and [Cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html) installed on your system, then follow these steps:
+
+### Environment variables
 
 Clone the repository and fill-in the environment variables in a `.env` file. You can use the `.env.sample` as a template.
 
@@ -13,6 +17,8 @@ Clone the repository and fill-in the environment variables in a `.env` file. You
 cp .env.sample .env
 nano .env # or use your favorite editor
 ```
+
+### Database
 
 Run the migrations to set up the SQLite database. You will need to have [Diesel CLI](https://diesel.rs/guides/getting-started#installing-diesel-cli) installed.
 
@@ -28,7 +34,21 @@ To run the migrations, use the following command:
 diesel migration run
 ```
 
-Then, use `cargo` to run the application:
+### Creating an Admin User
+
+After setting up the database, you can create an admin user interactively using the CLI:
+
+```bash
+cargo run -- create-user
+```
+
+This will prompt you to enter a username and password for a new admin user.
+
+Note that this user is NOT the same as a Bluesky user in your PDS, but a separate entity that is used to manage the invite codes.
+
+## Usage
+
+Once the setup process is complete, use `cargo` to run the application:
 
 ```bash
 cargo run
