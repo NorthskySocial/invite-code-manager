@@ -1,3 +1,5 @@
 /target
 .env
 database.sqlite
+Cargo.lock
+
