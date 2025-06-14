@@ -17,6 +17,8 @@ use crate::routes::validate_otp::validate_otp_handler;
 use crate::routes::verify_otp::verify_otp_handler;
 use actix_web::web::Data;
 use actix_web::{App, HttpServer, middleware};
+use actix_web::http::header::{CONTENT_TYPE, ACCESS_CONTROL_ALLOW_ORIGIN};
+use actix_cors::Cors;
 use diesel::SqliteConnection;
 use diesel::r2d2::{ConnectionManager, Pool};
 use dotenvy::dotenv;
@@ -38,6 +40,15 @@ fn init_db(database_url: &str, db_min_idle: &str) -> Pool<ConnectionManager<Sqli
         .min_idle(Some(db_min_idle.parse().unwrap()))
         .build(manager)
         .expect("Failed to create pool")
+}
+
+fn create_cors(allowed_origin: &str) -> Cors {
+    Cors::default()
+        .allowed_origin(allowed_origin)
+        .allowed_methods(vec!["GET", "POST", "OPTIONS"])
+        .allowed_headers(vec![CONTENT_TYPE, ACCESS_CONTROL_ALLOW_ORIGIN])
+        .supports_credentials()
+        .max_age(3600)
 }
 
 #[actix_rt::main]
@@ -89,10 +100,15 @@ async fn main() -> io::Result<()> {
         "[Invite Code Manager] Starting server on port {}",
         server_port
     );
+    // Get CORS allowed origin
+    let allowed_origin = env::var("ALLOWED_ORIGIN").unwrap_or("http://localhost:3000".to_string());
+
     HttpServer::new(move || {
         let secret_key = actix_web::cookie::Key::from(&[0; 64]);
+        let cors = create_cors(&allowed_origin);
         App::new()
             .wrap(middleware::Logger::default())
+            .wrap(cors)
             .wrap(actix_session::SessionMiddleware::new(
                 actix_session::storage::CookieSessionStore::default(),
                 secret_key.clone(),
