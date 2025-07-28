@@ -56,8 +56,3 @@ cargo run
 
 The application will start a web server on the specified port. You can use the [invite code client](https://github.com/NorthskySocial/invite-code-client) to interact with the server.
 
-## What Needs Work
-
-- Proper error handling
-- Reorganize code to clean up
-- Much more
