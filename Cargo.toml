@@ -10,7 +10,6 @@ actix-web = "4.8.0"
 serde = { version = "1.0.204", features = ["derive"] }
 dotenvy = "0.15.7"
 actix-session = { version = "0.9.0", features = ["redis-rs-session", "cookie-session"] }
-tracing = "0.1.41"
 actix-cors = "0.7.0"
 diesel = { version = "2.2.2", features = ["sqlite", "r2d2"] }
 rand = "0.8.5"
@@ -18,9 +17,5 @@ totp-rs = "5.4.0"
 base32 = "0.4.0"
 serde_json = "1.0.91"
 reqwest = { version = "0.12.14", features = ["json"] }
-tokio = "1.44.1"
-uuid = { version = "1.16.0", features = ["v4"] }
-bcrypt = "0.17.0"
-base64 = "0.22.1"
-log = "0.4.26"
 rpassword = "7.4.0"
+rust-argon2 = "3.0.0"

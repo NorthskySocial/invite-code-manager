@@ -1,3 +1,5 @@
+extern crate argon2;
+
 mod cli;
 mod config;
 mod error;

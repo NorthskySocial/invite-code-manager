@@ -1,8 +1,9 @@
 pub use crate::helper::DBPooledConnection;
 use crate::user::InviteCodeAdmin;
-use bcrypt::{DEFAULT_COST, hash};
+use argon2::Config;
 use diesel::RunQueryDsl;
 use rpassword::read_password;
+use std::env;
 use std::error::Error;
 use std::io::{self, Write};
 
@@ -26,7 +27,11 @@ pub fn create_user(conn: &mut DBPooledConnection) -> Result<(), Box<dyn Error>> 
     print!("Password: ");
     io::stdout().flush()?;
     let password = read_password()?;
-    let hashed_password = hash(password, DEFAULT_COST)?;
+
+    let salt = env::var("SALT")?;
+    let config = Config::default();
+    let hashed_password =
+        argon2::hash_encoded(password.as_bytes(), salt.as_bytes(), &config).unwrap();
 
     // Create the new user
     let new_user = InviteCodeAdmin {

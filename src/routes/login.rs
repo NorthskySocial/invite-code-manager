@@ -1,4 +1,4 @@
-use crate::helper::fetch_invite_code_admin;
+use crate::helper::fetch_invite_code_admin_login;
 use crate::routes::{DBPool, invite_code_admin_to_response};
 use crate::{GenericResponse, LoginUser};
 use actix_web::web::{Data, Json};
@@ -16,7 +16,11 @@ async fn login_user(
     body: Json<LoginUser>,
     session: actix_session::Session,
 ) -> HttpResponse {
-    let user = fetch_invite_code_admin(&mut data.get().unwrap(), body.username.as_str());
+    let user = fetch_invite_code_admin_login(
+        &mut data.get().unwrap(),
+        body.username.as_str(),
+        body.password.as_str(),
+    );
     match user {
         None => {
             let json_error = GenericResponse {
