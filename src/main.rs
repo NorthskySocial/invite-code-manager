@@ -44,10 +44,10 @@ fn init_db(database_url: &str, db_min_idle: &str) -> Pool<ConnectionManager<Sqli
         .expect("Failed to create pool")
 }
 
-fn create_cors(allowed_origin: &str) -> Cors {
+fn create_cors() -> Cors {
     Cors::default()
-        .allowed_origin(allowed_origin)
-        .allowed_methods(vec!["GET", "POST", "OPTIONS"])
+        .allow_any_origin()
+        .allowed_methods(vec!["GET", "POST"])
         .allowed_headers(vec![CONTENT_TYPE, ACCESS_CONTROL_ALLOW_ORIGIN])
         .supports_credentials()
         .max_age(3600)
@@ -74,18 +74,18 @@ async fn main() -> io::Result<()> {
     let db_pool = init_db(database_url.as_str(), db_min_idle.as_str());
 
     // Check for CLI commands (if none are provided, start the server instead)
-    let args: Vec<String> = std::env::args().collect();
+    let args: Vec<String> = env::args().collect();
     if args.len() > 1 {
         match args[1].as_str() {
             "create-user" => {
                 let mut conn = db_pool.get().expect("Failed to get DB connection");
                 if let Err(e) = cli::create_user(&mut conn) {
-                    eprintln!("Error creating user: {}", e);
+                    tracing::error!("Error creating user: {}", e);
                 }
                 return Ok(());
             }
             _ => {
-                println!("Unknown command: {}", args[1]);
+                tracing::info!("Unknown command: {}", args[1]);
                 return Ok(());
             }
         }
@@ -98,16 +98,13 @@ async fn main() -> io::Result<()> {
     };
 
     // Start Http Server
-    println!(
+    tracing::info!(
         "[Invite Code Manager] Starting server on port {}",
         server_port
     );
-    // Get CORS allowed origin
-    let allowed_origin = env::var("ALLOWED_ORIGIN").unwrap_or("http://localhost:3000".to_string());
-
     HttpServer::new(move || {
         let secret_key = actix_web::cookie::Key::from(&[0; 64]);
-        let cors = create_cors(&allowed_origin);
+        let cors = create_cors();
         App::new()
             .wrap(middleware::Logger::default())
             .wrap(cors)

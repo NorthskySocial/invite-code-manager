@@ -7,6 +7,7 @@ use rand::Rng;
 use serde_json::json;
 use totp_rs::{Algorithm, Secret, TOTP};
 
+#[tracing::instrument(skip(data, session))]
 #[post("/auth/otp/generate")]
 async fn generate_otp_handler(
     data: Data<DBPool>,

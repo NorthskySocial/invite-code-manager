@@ -8,11 +8,12 @@ use std::error::Error;
 use std::io::{self, Write};
 
 /// Creates a new admin user interactively via CLI
+#[tracing::instrument(skip(conn))]
 pub fn create_user(conn: &mut DBPooledConnection) -> Result<(), Box<dyn Error>> {
-    println!("Creating a new admin user...");
+    tracing::info!("Creating a new admin user...");
 
     // Get username
-    print!("Username: ");
+    tracing::info!("Username: ");
     io::stdout().flush()?;
     let mut username = String::new();
     io::stdin().read_line(&mut username)?;
@@ -24,7 +25,7 @@ pub fn create_user(conn: &mut DBPooledConnection) -> Result<(), Box<dyn Error>> 
     }
 
     // Get password (securely without displaying it)
-    print!("Password: ");
+    tracing::info!("Password: ");
     io::stdout().flush()?;
     let password = read_password()?;
 
@@ -48,6 +49,6 @@ pub fn create_user(conn: &mut DBPooledConnection) -> Result<(), Box<dyn Error>> 
         .values(&new_user)
         .execute(conn)?;
 
-    println!("User '{}' created successfully!", username);
+    tracing::info!("User '{}' created successfully!", username);
     Ok(())
 }

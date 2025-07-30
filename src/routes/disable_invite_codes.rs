@@ -4,6 +4,8 @@ use crate::user::{DisableInviteCodeSchema, InviteCodeAdmin};
 use actix_web::web::{Data, Json};
 use actix_web::{HttpResponse, post};
 
+#[tracing::instrument(skip(config, body, _invite_code_admin), fields(user_id = %_invite_code_admin.username
+))]
 #[post("/disable-invite-codes")]
 async fn disable_invite_codes_handler(
     _invite_code_admin: InviteCodeAdmin,

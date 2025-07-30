@@ -5,6 +5,8 @@ use crate::user::InviteCodeAdmin;
 use actix_web::web::Data;
 use actix_web::{HttpResponse, Responder, get};
 
+#[tracing::instrument(skip(config, _invite_code_admin), fields(user_id = %_invite_code_admin.username
+))]
 #[get("/invite-codes")]
 async fn get_invite_codes_handler(
     _invite_code_admin: InviteCodeAdmin,
@@ -22,13 +24,14 @@ async fn get_invite_codes_handler(
         Err(_error) => return HttpResponse::InternalServerError().finish(),
     };
     if !res.status().is_success() {
+        tracing::error!("not success");
         panic!("not success")
     }
     let invite_codes = res.json::<InviteCodes>().await;
     match invite_codes {
         Ok(invite_codes) => HttpResponse::Ok().json(invite_codes),
         Err(error) => {
-            eprintln!("{}", error);
+            tracing::error!("{}", error);
             HttpResponse::InternalServerError().finish()
         }
     }

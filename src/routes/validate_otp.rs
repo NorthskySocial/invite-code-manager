@@ -5,6 +5,8 @@ use actix_web::{HttpResponse, Responder, post};
 use serde_json::json;
 use totp_rs::{Algorithm, Secret, TOTP};
 
+#[tracing::instrument(skip(body, invite_code_admin, session), fields(user_id = %invite_code_admin.username
+))]
 #[post("/auth/otp/validate")]
 async fn validate_otp_handler(
     body: Json<VerifyOTPSchema>,

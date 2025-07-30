@@ -10,6 +10,7 @@ pub struct LoginResponse {
     pub status: String,
 }
 
+#[tracing::instrument(skip(data, body, session))]
 #[post("/auth/login")]
 async fn login_user(
     data: Data<DBPool>,
