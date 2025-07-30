@@ -13,7 +13,7 @@ pub fn create_user(conn: &mut DBPooledConnection) -> Result<(), Box<dyn Error>> 
     tracing::info!("Creating a new admin user...");
 
     // Get username
-    tracing::info!("Username: ");
+    print!("Username: ");
     io::stdout().flush()?;
     let mut username = String::new();
     io::stdin().read_line(&mut username)?;
@@ -25,7 +25,7 @@ pub fn create_user(conn: &mut DBPooledConnection) -> Result<(), Box<dyn Error>> 
     }
 
     // Get password (securely without displaying it)
-    tracing::info!("Password: ");
+    print!("Password: ");
     io::stdout().flush()?;
     let password = read_password()?;
 
