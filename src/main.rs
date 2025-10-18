@@ -14,6 +14,7 @@ use crate::routes::create_invite_codes::create_invite_codes_handler;
 use crate::routes::disable_invite_codes::disable_invite_codes_handler;
 use crate::routes::generate_otp::generate_otp_handler;
 use crate::routes::get_invite_codes::get_invite_codes_handler;
+use crate::routes::health::healthcheck_handler;
 use crate::routes::login::login_user;
 use crate::routes::validate_otp::validate_otp_handler;
 use crate::routes::verify_otp::verify_otp_handler;
@@ -114,6 +115,7 @@ async fn main() -> io::Result<()> {
             ))
             .app_data(Data::new(db_pool.clone()))
             .app_data(Data::new(config.clone()))
+            .service(healthcheck_handler)
             .service(login_user)
             .service(generate_otp_handler)
             .service(verify_otp_handler)

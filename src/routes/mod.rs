@@ -8,6 +8,7 @@ pub mod create_invite_codes;
 pub mod disable_invite_codes;
 pub mod generate_otp;
 pub mod get_invite_codes;
+pub mod health;
 pub mod login;
 pub mod validate_otp;
 pub mod verify_otp;
