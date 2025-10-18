@@ -1,4 +1,4 @@
-use actix_web::{get, HttpResponse, Responder};
+use actix_web::{HttpResponse, Responder, get};
 
 #[get("/health")]
 pub async fn healthcheck_handler() -> impl Responder {
@@ -7,7 +7,7 @@ pub async fn healthcheck_handler() -> impl Responder {
 
 #[cfg(test)]
 mod tests {
-    use actix_web::{body::MessageBody, test, App};
+    use actix_web::{App, body::MessageBody, test};
 
     use super::*;
 
