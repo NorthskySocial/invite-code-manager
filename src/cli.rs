@@ -30,6 +30,13 @@ pub fn create_user(conn: &mut DBPooledConnection) -> Result<(), Box<dyn Error>> 
     let password = read_password()?;
 
     let salt = env::var("SALT")?;
+    if salt.is_empty() {
+        return Err("SALT environment variable is not set or is empty".into());
+    }
+    if salt.len() < 8 {
+        return Err("SALT must be at least 8 characters long".into());
+    }
+
     let config = Config::default();
     let hashed_password =
         argon2::hash_encoded(password.as_bytes(), salt.as_bytes(), &config).unwrap();
