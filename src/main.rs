@@ -84,6 +84,13 @@ async fn main() -> io::Result<()> {
                 }
                 return Ok(());
             }
+            "list-users" => {
+                let mut conn = db_pool.get().expect("Failed to get DB connection");
+                if let Err(e) = cli::list_users(&mut conn) {
+                    tracing::error!("Error listing users: {}", e);
+                }
+                return Ok(());
+            }
             _ => {
                 tracing::info!("Unknown command: {}", args[1]);
                 return Ok(());
