@@ -31,16 +31,6 @@ use diesel::r2d2::{ConnectionManager, Pool};
 use dotenvy::dotenv;
 use std::{env, io};
 
-const GET_INVITE_CODES: &str = "/xrpc/com.atproto.admin.getInviteCodes";
-const DISABLE_INVITE_CODES: &str = "/xrpc/com.atproto.admin.disableInviteCodes";
-const CREATE_INVITE_CODES: &str = "/xrpc/com.atproto.server.createInviteCodes";
-
-#[derive(serde::Deserialize, Debug, serde::Serialize)]
-pub struct LoginUser {
-    username: String,
-    password: String,
-}
-
 fn init_db(database_url: &str, db_min_idle: &str) -> Pool<ConnectionManager<SqliteConnection>> {
     let manager = ConnectionManager::<SqliteConnection>::new(database_url);
     Pool::builder()
@@ -136,7 +126,6 @@ async fn main() -> io::Result<()> {
             .service(disable_invite_codes_handler)
             .service(add_admin_handler)
             .service(remove_admin_handler)
-            .service(health_check)
     })
     .bind(format!("0.0.0.0:{}", server_port))?
     .workers(worker_count)
