@@ -1,5 +1,6 @@
 use crate::GET_INVITE_CODES;
 use crate::config::Config;
+use crate::error::AppError;
 use crate::routes::InviteCodes;
 use crate::user::InviteCodeAdmin;
 use actix_web::web::Data;
@@ -15,6 +16,7 @@ async fn get_invite_codes_handler(
     let client = reqwest::Client::new();
     let res = match client
         .get(config.pds_endpoint.clone() + GET_INVITE_CODES)
+        .query(&[("limit", "500")])
         .header("Content-Type", "application/json")
         .basic_auth("admin", Some(config.pds_admin_password.clone()))
         .send()
