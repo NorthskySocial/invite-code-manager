@@ -4,11 +4,14 @@ use diesel::SqliteConnection;
 use diesel::r2d2::{ConnectionManager, Pool};
 use serde::{Deserialize, Serialize};
 
+pub mod add_admin;
 pub mod create_invite_codes;
 pub mod disable_invite_codes;
 pub mod generate_otp;
 pub mod get_invite_codes;
+pub mod health;
 pub mod login;
+pub mod remove_admin;
 pub mod validate_otp;
 pub mod verify_otp;
 

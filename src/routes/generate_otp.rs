@@ -35,9 +35,9 @@ async fn generate_otp_handler(
         return HttpResponse::BadRequest().json(());
     }
 
-    let mut rng = rand::thread_rng();
-    let data_byte: [u8; 21] = rng.r#gen();
-    let base32_string = base32::encode(base32::Alphabet::RFC4648 { padding: false }, &data_byte);
+    let mut rng = rand::rng();
+    let data_byte: [u8; 21] = rng.random();
+    let base32_string = base32::encode(base32::Alphabet::Rfc4648 { padding: false }, &data_byte);
 
     let totp = TOTP::new(
         Algorithm::SHA1,

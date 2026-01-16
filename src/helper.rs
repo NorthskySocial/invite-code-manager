@@ -76,3 +76,44 @@ pub fn verify_otp(conn: &mut DBPooledConnection, _username: &str) {
         ))
         .execute(conn);
 }
+
+pub fn create_invite_code_admin(
+    conn: &mut DBPooledConnection,
+    _username: &str,
+    _password: &str,
+) -> Result<usize, diesel::result::Error> {
+    use crate::schema::invite_code_admin;
+    use crate::user::InviteCodeAdmin;
+
+    // Hash the password using Argon2
+    let hashed_password = argon2::hash_encoded(
+        _password.as_bytes(),
+        b"randomsalt",
+        &argon2::Config::default(),
+    )
+    .map_err(|_| diesel::result::Error::RollbackTransaction)?;
+
+    let new_admin = InviteCodeAdmin {
+        username: _username.to_string(),
+        password: hashed_password,
+        otp_base32: None,
+        otp_auth_url: None,
+        otp_enabled: 0,
+        otp_verified: 0,
+    };
+
+    diesel::insert_into(invite_code_admin::table)
+        .values(&new_admin)
+        .execute(conn)
+}
+
+pub fn delete_invite_code_admin(
+    conn: &mut DBPooledConnection,
+    _username: &str,
+) -> Result<usize, diesel::result::Error> {
+    use crate::schema::invite_code_admin;
+
+    diesel::delete(invite_code_admin::table)
+        .filter(invite_code_admin::username.eq(_username))
+        .execute(conn)
+}

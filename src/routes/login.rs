@@ -17,6 +17,7 @@ async fn login_user(
     body: Json<LoginUser>,
     session: actix_session::Session,
 ) -> HttpResponse {
+    tracing::info!("Login user");
     let user = fetch_invite_code_admin_login(
         &mut data.get().unwrap(),
         body.username.as_str(),

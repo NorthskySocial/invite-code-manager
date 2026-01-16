@@ -1,58 +1,219 @@
-# <h1> Invite Code Manager </h1>
+# Invite Code Manager
+
 [![License](https://img.shields.io/badge/license-MIT-blue)](https://opensource.org/licenses/mit)
 
 ## Overview
 
-Backend Application that acts as a middleman to manage invite codes. Purpose is to avoid having to share the admin password for the PDS with many users
+A backend application that acts as a middleman to manage invite codes for Personal Data Server (PDS)
+instances. The purpose is to avoid having to share the admin password for the PDS with many users by
+providing a secure web interface for invite code management with OTP-based authentication.
 
-## Setup
+## Technology Stack
 
-To set up the application, you will need to have [Rust](https://www.rust-lang.org/tools/install) and [Cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html) installed on your system, then follow these steps:
+- **Language**: Rust (Edition 2024, Nightly toolchain)
+- **Web Framework**: Actix-web 4.8.0
+- **Database**: SQLite with Diesel ORM 2.2.2
+- **Authentication**: Session-based with TOTP (Time-based One-Time Password)
+- **Password Hashing**: Argon2
+- **HTTP Client**: Reqwest for PDS communication
+- **Package Manager**: Cargo
 
-### Environment variables
+## Requirements
 
-Clone the repository and fill-in the environment variables in a `.env` file. You can use the `.env.sample` as a template.
+- **Rust**: Nightly toolchain (automatically managed via `rust-toolchain.toml`)
+- **Diesel CLI**: Required for database migrations
+  ```bash
+  cargo install diesel_cli --no-default-features --features sqlite
+  ```
 
+## Setup and Installation
+
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd InviteCodeManager
+   ```
+
+2. **Configure environment variables**
+
+   Copy the sample environment file and configure it:
+   ```bash
+   cp .env.sample .env
+   ```
+
+   Edit the `.env` file with your configuration (see Environment Variables section below).
+
+3. **Set up the database**
+
+   Run migrations to create the SQLite database schema:
+   ```bash
+   diesel migration run
+   ```
+
+4. **Create an admin user**
+
+   Create an admin user interactively using the CLI:
+   ```bash
+   cargo run -- create-user
+   ```
+
+   This will prompt you to enter a username and password for a new admin user. Note that this user
+   is NOT the same as a Bluesky user in your PDS, but a separate entity used to manage invite codes.
+
+## Environment Variables
+
+The following environment variables can be configured in your `.env` file:
+
+### Required Variables
+
+- `PDS_ADMIN_PASSWORD`: Admin password for your PDS instance
+- `PDS_ENDPOINT`: URL endpoint of your PDS instance
+
+### Optional Variables (with defaults)
+
+- `DATABASE_URL`: SQLite database file path (default: "database.sqlite")
+- `DB_MIN_IDLE`: Minimum idle connections in pool (default: "1")
+- `SERVER_PORT`: HTTP server port (default: "9090")
+- `WORKER_COUNT`: Number of Actix-web worker threads (default: "2")
+- `SALT`: Salt for password hashing (default: "salt_password")
+
+## Running the Application
+
+### Development
 ```bash
-cp .env.sample .env
-nano .env # or use your favorite editor
+# Run in development mode
+cargo run
+
+# Build for development
+cargo build
 ```
 
-### Database
-
-Run the migrations to set up the SQLite database. You will need to have [Diesel CLI](https://diesel.rs/guides/getting-started#installing-diesel-cli) installed.
-
-If you don't have it installed, you can do so with the following command (or read more in the link above):
+### Production
 
 ```bash
-cargo install diesel_cli --no-default-features --features sqlite
+# Build optimized release
+cargo build --release
+
+# Run release binary
+./target/release/InviteCodeManager
 ```
 
-To run the migrations, use the following command:
+### Docker
 
 ```bash
-diesel migration run
+# Build Docker image
+docker build -t invite-code-manager .
+
+# Run with environment file
+docker run --env-file .env -p 9090:9090 invite-code-manager
 ```
 
-### Creating an Admin User
+## API Endpoints
 
-After setting up the database, you can create an admin user interactively using the CLI:
+The application exposes the following REST API endpoints:
+
+- `POST /login` - User authentication
+- `POST /generate-otp` - Generate OTP secret for TOTP setup
+- `POST /verify-otp` - Verify OTP setup completion
+- `POST /validate-otp` - Validate OTP token for authentication
+- `POST /create-invite-codes` - Create new invite codes
+- `GET /get-invite-codes` - Retrieve existing invite codes
+- `POST /disable-invite-codes` - Disable invite codes
+
+The server runs on `0.0.0.0:9090` by default and can be configured via the `SERVER_PORT` environment
+variable.
+
+## CLI Commands
+
+- `cargo run -- create-user`: Interactively create a new admin user
+
+## Testing
+
+**TODO**: Tests are not currently implemented in this project. Future work should include:
+
+- Unit tests for core functionality
+- Integration tests for API endpoints
+- Database migration tests
+
+To run tests when implemented:
 
 ```bash
-cargo run -- create-user
+cargo test
 ```
 
-This will prompt you to enter a username and password for a new admin user.
+## Project Structure
 
-Note that this user is NOT the same as a Bluesky user in your PDS, but a separate entity that is used to manage the invite codes.
+```
+src/
+├── main.rs              # Application entry point and server setup
+├── cli.rs               # CLI commands (user creation)
+├── config.rs            # Configuration structures
+├── error.rs             # Custom error types
+├── helper.rs            # Utility functions for OTP and user management
+├── schema.rs            # Generated by Diesel (database schema)
+├── user.rs              # User models and authentication
+└── routes/              # HTTP route handlers
+    ├── create_invite_codes.rs
+    ├── disable_invite_codes.rs
+    ├── generate_otp.rs
+    ├── get_invite_codes.rs
+    ├── login.rs
+    ├── validate_otp.rs
+    └── verify_otp.rs
+
+migrations/              # Database migration files
+├── 2025-03-14-044938_create_users/
+│   ├── up.sql
+│   └── down.sql
+
+Cargo.toml              # Rust package configuration
+Cargo.lock              # Dependency lock file
+rust-toolchain.toml     # Rust toolchain specification
+diesel.toml             # Diesel ORM configuration
+Dockerfile              # Container build configuration
+.env.sample             # Environment variables template
+```
+
+## Database Schema
+
+The application uses a single SQLite table `invite_code_admin`:
+
+- `rowid`: Integer primary key
+- `username`: Text (unique identifier)
+- `password`: Text (Argon2 hashed)
+- `otp_base32`: Nullable text (TOTP secret)
+- `otp_auth_url`: Nullable text (QR code URL)
+- `otp_enabled`: Integer boolean
+- `otp_verified`: Integer boolean
+
+## Development
+
+### Code Style
+
+- Use `cargo fmt` for code formatting
+- Use `cargo clippy` for linting
+- Follow standard Rust naming conventions
+
+### Debugging
+
+- Use `RUST_LOG=debug cargo run` for detailed logging
+- Ensure proper time synchronization for OTP functionality
+- Verify PDS connection with valid admin credentials
 
 ## Usage
 
-Once the setup process is complete, use `cargo` to run the application:
+Once setup is complete, the application starts a web server that can be accessed through a web
+interface. You can use
+the [invite code client](https://github.com/NorthskySocial/invite-code-client) to interact with the
+server.
 
-```bash
-cargo run
-```
+The application provides a secure interface for:
 
-The application will start a web server on the specified port. You can use the [invite code client](https://github.com/NorthskySocial/invite-code-client) to interact with the server.
+1. User authentication with username/password and optional TOTP
+2. Managing invite codes for your PDS instance
+3. Creating, retrieving, and disabling invite codes without exposing PDS admin credentials
 
+## License
+
+This project is licensed under the MIT License - see
+the [LICENSE](https://opensource.org/licenses/mit) for details.
