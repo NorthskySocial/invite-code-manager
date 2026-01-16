@@ -15,7 +15,7 @@ RUN apt-get install sqlite3 -y
 
 COPY --from=builder /app/target/release/ .
 
-ENTRYPOINT ["./InviteCodeManager"]
+ENTRYPOINT ["./invite_code_manager"]
 
 LABEL org.opencontainers.image.source=https://github.com/NorthskySocial/invite-code-manager
 LABEL org.opencontainers.image.description="Invite Code Manager"
