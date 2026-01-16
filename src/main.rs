@@ -14,7 +14,7 @@ use crate::routes::create_invite_codes::create_invite_codes_handler;
 use crate::routes::disable_invite_codes::disable_invite_codes_handler;
 use crate::routes::generate_otp::generate_otp_handler;
 use crate::routes::get_invite_codes::get_invite_codes_handler;
-use crate::routes::health::health_check;
+use crate::routes::health::healthcheck_handler;
 use crate::routes::login::login_user;
 use crate::routes::remove_admin::remove_admin_handler;
 use crate::routes::validate_otp::validate_otp_handler;
@@ -30,6 +30,16 @@ use diesel::SqliteConnection;
 use diesel::r2d2::{ConnectionManager, Pool};
 use dotenvy::dotenv;
 use std::{env, io};
+
+const GET_INVITE_CODES: &str = "/xrpc/com.atproto.admin.getInviteCodes";
+const DISABLE_INVITE_CODES: &str = "/xrpc/com.atproto.admin.disableInviteCodes";
+const CREATE_INVITE_CODES: &str = "/xrpc/com.atproto.server.createInviteCodes";
+
+#[derive(serde::Deserialize, Debug, serde::Serialize)]
+pub struct LoginUser {
+    username: String,
+    password: String,
+}
 
 fn init_db(database_url: &str, db_min_idle: &str) -> Pool<ConnectionManager<SqliteConnection>> {
     let manager = ConnectionManager::<SqliteConnection>::new(database_url);
@@ -71,19 +81,26 @@ async fn main() -> io::Result<()> {
     // Check for CLI commands (if none are provided, start the server instead)
     let args: Vec<String> = env::args().collect();
     if args.len() > 1 {
-        return match args[1].as_str() {
+        match args[1].as_str() {
             "create-user" => {
                 let mut conn = db_pool.get().expect("Failed to get DB connection");
                 if let Err(e) = cli::create_user(&mut conn) {
                     tracing::error!("Error creating user: {}", e);
                 }
-                Ok(())
+                return Ok(());
+            }
+            "list-users" => {
+                let mut conn = db_pool.get().expect("Failed to get DB connection");
+                if let Err(e) = cli::list_users(&mut conn) {
+                    tracing::error!("Error listing users: {}", e);
+                }
+                return Ok(());
             }
             _ => {
                 tracing::info!("Unknown command: {}", args[1]);
-                Ok(())
+                return Ok(());
             }
-        };
+        }
     }
 
     // Setup Config
@@ -109,6 +126,7 @@ async fn main() -> io::Result<()> {
             ))
             .app_data(Data::new(db_pool.clone()))
             .app_data(Data::new(config.clone()))
+            .service(healthcheck_handler)
             .service(login_user)
             .service(generate_otp_handler)
             .service(verify_otp_handler)
