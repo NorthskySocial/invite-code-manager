@@ -1,27 +1,5 @@
 extern crate argon2;
 
-mod cli;
-mod config;
-mod error;
-mod helper;
-mod routes;
-mod schema;
-mod user;
-
-use crate::config::Config;
-use crate::routes::add_admin::add_admin_handler;
-use crate::routes::create_invite_codes::create_invite_codes_handler;
-use crate::routes::disable_invite_codes::disable_invite_codes_handler;
-use crate::routes::generate_otp::generate_otp_handler;
-use crate::routes::get_invite_codes::get_invite_codes_handler;
-use crate::routes::health::healthcheck_handler;
-use crate::routes::login::login_user;
-use crate::routes::remove_admin::remove_admin_handler;
-use crate::routes::validate_otp::validate_otp_handler;
-use crate::routes::verify_otp::verify_otp_handler;
-use InviteCodeManager::{
-    CREATE_INVITE_CODES, DISABLE_INVITE_CODES, GET_INVITE_CODES, GenericResponse, LoginUser,
-};
 use actix_cors::Cors;
 use actix_web::http::header::{ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE};
 use actix_web::web::Data;
@@ -29,6 +7,18 @@ use actix_web::{App, HttpServer, middleware};
 use diesel::SqliteConnection;
 use diesel::r2d2::{ConnectionManager, Pool};
 use dotenvy::dotenv;
+use invite_code_manager::cli;
+use invite_code_manager::config::Config;
+use invite_code_manager::routes::add_admin::add_admin_handler;
+use invite_code_manager::routes::create_invite_codes::create_invite_codes_handler;
+use invite_code_manager::routes::disable_invite_codes::disable_invite_codes_handler;
+use invite_code_manager::routes::generate_otp::generate_otp_handler;
+use invite_code_manager::routes::get_invite_codes::get_invite_codes_handler;
+use invite_code_manager::routes::health::healthcheck_handler;
+use invite_code_manager::routes::login::login_user;
+use invite_code_manager::routes::remove_admin::remove_admin_handler;
+use invite_code_manager::routes::validate_otp::validate_otp_handler;
+use invite_code_manager::routes::verify_otp::verify_otp_handler;
 use std::{env, io};
 
 fn init_db(database_url: &str, db_min_idle: &str) -> Pool<ConnectionManager<SqliteConnection>> {
@@ -71,26 +61,26 @@ async fn main() -> io::Result<()> {
     // Check for CLI commands (if none are provided, start the server instead)
     let args: Vec<String> = env::args().collect();
     if args.len() > 1 {
-        match args[1].as_str() {
+        return match args[1].as_str() {
             "create-user" => {
                 let mut conn = db_pool.get().expect("Failed to get DB connection");
                 if let Err(e) = cli::create_user(&mut conn) {
                     tracing::error!("Error creating user: {}", e);
                 }
-                return Ok(());
+                Ok(())
             }
             "list-users" => {
                 let mut conn = db_pool.get().expect("Failed to get DB connection");
                 if let Err(e) = cli::list_users(&mut conn) {
                     tracing::error!("Error listing users: {}", e);
                 }
-                return Ok(());
+                Ok(())
             }
             _ => {
                 tracing::info!("Unknown command: {}", args[1]);
-                return Ok(());
+                Ok(())
             }
-        }
+        };
     }
 
     // Setup Config

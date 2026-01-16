@@ -1,7 +1,7 @@
-use crate::GenericResponse;
+use crate::error::AppError;
 use crate::user::{InviteCodeAdmin, VerifyOTPSchema};
 use actix_web::web::Json;
-use actix_web::{HttpResponse, Responder, post};
+use actix_web::{HttpResponse, post};
 use serde_json::json;
 use totp_rs::{Algorithm, Secret, TOTP};
 
@@ -12,36 +12,38 @@ async fn validate_otp_handler(
     body: Json<VerifyOTPSchema>,
     invite_code_admin: InviteCodeAdmin,
     session: actix_session::Session,
-) -> impl Responder {
+) -> Result<HttpResponse, AppError> {
     if !invite_code_admin.otp_enabled.eq(&1) {
-        let json_error = GenericResponse {
-            status: "fail".to_string(),
-            message: "2FA not enabled".to_string(),
-        };
-
-        return HttpResponse::Forbidden().json(json_error);
+        return Err(AppError::AuthError("2FA not enabled".to_string()));
     }
 
-    let otp_base32 = invite_code_admin.otp_base32.to_owned().unwrap();
+    let otp_base32 = invite_code_admin
+        .otp_base32
+        .clone()
+        .ok_or_else(|| AppError::InternalError("OTP not generated for this user".to_string()))?;
 
     let totp = TOTP::new(
         Algorithm::SHA1,
         6,
         1,
         30,
-        Secret::Encoded(otp_base32).to_bytes().unwrap(),
+        Secret::Encoded(otp_base32)
+            .to_bytes()
+            .map_err(|e| AppError::InternalError(e.to_string()))?,
     )
-    .unwrap();
+    .map_err(|e| AppError::InternalError(e.to_string()))?;
 
-    let is_valid = totp.check_current(&body.token).unwrap();
+    let is_valid = totp
+        .check_current(&body.token)
+        .map_err(|e| AppError::InternalError(e.to_string()))?;
 
     if !is_valid {
-        return HttpResponse::Forbidden()
-            .json(json!({"status": "fail", "message": "Token is invalid or user doesn't exist"}));
+        return Err(AppError::AuthError("Token is invalid".to_string()));
     }
 
     session
         .insert("otp_validated", invite_code_admin.username.clone())
-        .expect("User ID failed to insert");
-    HttpResponse::Ok().json(json!({"otp_valid": true}))
+        .map_err(|e| AppError::InternalError(format!("Session error: {}", e)))?;
+
+    Ok(HttpResponse::Ok().json(json!({"otp_valid": true})))
 }

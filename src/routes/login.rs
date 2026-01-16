@@ -1,6 +1,7 @@
+use crate::LoginUser;
+use crate::error::AppError;
 use crate::helper::fetch_invite_code_admin_login;
 use crate::routes::{DBPool, invite_code_admin_to_response};
-use crate::{GenericResponse, LoginUser};
 use actix_web::web::{Data, Json};
 use actix_web::{HttpResponse, post};
 use serde::{Deserialize, Serialize};
@@ -16,36 +17,33 @@ async fn login_user(
     data: Data<DBPool>,
     body: Json<LoginUser>,
     session: actix_session::Session,
-) -> HttpResponse {
+) -> Result<HttpResponse, AppError> {
     tracing::info!("Login user");
-    let user = fetch_invite_code_admin_login(
-        &mut data.get().unwrap(),
-        body.username.as_str(),
-        body.password.as_str(),
-    );
+    let mut conn = data
+        .get()
+        .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+    let user =
+        fetch_invite_code_admin_login(&mut conn, body.username.as_str(), body.password.as_str());
     match user {
-        None => {
-            let json_error = GenericResponse {
-                status: "fail".to_string(),
-                message: format!("No user with username: {} found", body.username),
-            };
-
-            HttpResponse::NotFound().json(json_error)
-        }
+        None => Err(AppError::AuthError(format!(
+            "Invalid username or password for: {}",
+            body.username
+        ))),
         Some(user) => {
             session.renew();
             session
                 .insert("username", body.username.clone())
-                .expect("Username failed to insert");
+                .map_err(|e| AppError::InternalError(format!("Session error: {}", e)))?;
+
             if user.otp_verified == 1 {
                 session
                     .insert("otp_enabled", "y")
-                    .expect("OTP failed to insert");
+                    .map_err(|e| AppError::InternalError(format!("Session error: {}", e)))?;
                 let response = invite_code_admin_to_response(&user);
-                HttpResponse::Ok().json(response)
+                Ok(HttpResponse::Ok().json(response))
             } else {
                 let response = invite_code_admin_to_response(&user);
-                HttpResponse::Created().json(response)
+                Ok(HttpResponse::Created().json(response))
             }
         }
     }

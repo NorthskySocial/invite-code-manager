@@ -1,9 +1,8 @@
-use crate::error::AuthError;
+use crate::error::AppError;
 use crate::helper::DBPool;
 use crate::schema::invite_code_admin::username;
 use actix_session::SessionExt;
 use actix_web::dev::Payload;
-use actix_web::error::ErrorInternalServerError;
 use actix_web::web::Data;
 use actix_web::{FromRequest, HttpRequest};
 use diesel::{Insertable, QueryDsl, Queryable, RunQueryDsl, Selectable, SelectableHelper};
@@ -37,30 +36,47 @@ pub struct InviteCodeAdminData {
 }
 
 impl FromRequest for InviteCodeAdmin {
-    type Error = actix_web::Error;
+    type Error = AppError;
     type Future = Ready<Result<Self, Self::Error>>;
 
     fn from_request(req: &HttpRequest, _payload: &mut Payload) -> Self::Future {
-        let i = req.get_session().get::<String>("username").unwrap();
-        let _username = i.unwrap();
+        let username_session = match req.get_session().get::<String>("username") {
+            Ok(Some(u)) => u,
+            _ => return ready(Err(AppError::AuthError("Not logged in".to_string()))),
+        };
+
         let db = match req.app_data::<Data<DBPool>>() {
             None => {
-                return ready(Err(ErrorInternalServerError(AuthError {
-                    status: "".to_string(),
-                    message: "".to_string(),
-                })));
+                return ready(Err(AppError::InternalError(
+                    "Database pool not found".to_string(),
+                )));
             }
             Some(conn) => conn.to_owned(),
         };
 
         use crate::schema::invite_code_admin::dsl::invite_code_admin;
         use diesel::ExpressionMethods;
+
+        let mut conn = match db.get() {
+            Ok(c) => c,
+            Err(e) => return ready(Err(AppError::DatabaseError(e.to_string()))),
+        };
+
         let results = invite_code_admin
-            .filter(username.eq(_username))
+            .filter(username.eq(username_session))
             .select(InviteCodeAdmin::as_select())
-            .load(&mut db.get().unwrap())
-            .expect("DB Exception");
-        ready(Ok(results.first().unwrap().clone()))
+            .load(&mut conn);
+
+        match results {
+            Ok(admins) => {
+                if let Some(admin) = admins.into_iter().next() {
+                    ready(Ok(admin))
+                } else {
+                    ready(Err(AppError::NotFound("Admin user not found".to_string())))
+                }
+            }
+            Err(e) => ready(Err(AppError::DatabaseError(e.to_string()))),
+        }
     }
 }
 

@@ -1,5 +1,5 @@
 [package]
-name = "InviteCodeManager"
+name = "invite_code_manager"
 version = "0.1.0"
 edition = "2024"
 

@@ -1,4 +1,4 @@
-use crate::GenericResponse;
+use crate::error::AppError;
 use crate::helper::create_invite_code_admin;
 use crate::routes::DBPool;
 use crate::user::InviteCodeAdmin;
@@ -24,47 +24,37 @@ pub async fn add_admin_handler(
     data: Data<DBPool>,
     body: Json<AddAdminRequest>,
     _user: InviteCodeAdmin, // Requires authentication
-) -> HttpResponse {
+) -> Result<HttpResponse, AppError> {
     tracing::info!("Adding new admin user: {}", body.username);
 
     // Validate input
     if body.username.trim().is_empty() || body.password.trim().is_empty() {
-        let json_error = GenericResponse {
-            status: "fail".to_string(),
-            message: "Username and password cannot be empty".to_string(),
-        };
-        return HttpResponse::BadRequest().json(json_error);
+        return Err(AppError::InternalError(
+            "Username and password cannot be empty".to_string(),
+        ));
     }
 
-    match create_invite_code_admin(
-        &mut data.get().unwrap(),
-        body.username.as_str(),
-        body.password.as_str(),
-    ) {
+    let mut conn = data
+        .get()
+        .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+    match create_invite_code_admin(&mut conn, body.username.as_str(), body.password.as_str()) {
         Ok(_) => {
             let response = AddAdminResponse {
                 status: "success".to_string(),
                 message: format!("Admin user '{}' created successfully", body.username),
             };
-            HttpResponse::Created().json(response)
+            Ok(HttpResponse::Created().json(response))
         }
         Err(diesel::result::Error::DatabaseError(
             diesel::result::DatabaseErrorKind::UniqueViolation,
             _,
-        )) => {
-            let json_error = GenericResponse {
-                status: "fail".to_string(),
-                message: format!("Admin user '{}' already exists", body.username),
-            };
-            HttpResponse::Conflict().json(json_error)
-        }
+        )) => Err(AppError::InternalError(format!(
+            "Admin user '{}' already exists",
+            body.username
+        ))),
         Err(e) => {
             tracing::error!("Database error creating admin: {}", e);
-            let json_error = GenericResponse {
-                status: "error".to_string(),
-                message: "Failed to create admin user".to_string(),
-            };
-            HttpResponse::InternalServerError().json(json_error)
+            Err(e.into())
         }
     }
 }

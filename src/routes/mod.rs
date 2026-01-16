@@ -1,5 +1,4 @@
 use crate::user::{InviteCodeAdmin, InviteCodeAdminData};
-use actix_web::HttpResponse;
 use diesel::SqliteConnection;
 use diesel::r2d2::{ConnectionManager, Pool};
 use serde::{Deserialize, Serialize};
@@ -41,14 +40,8 @@ pub struct Code {
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct InviteCodes {
-    pub cursor: String,
+    pub cursor: Option<String>,
     pub codes: Vec<Code>,
-}
-
-#[derive(Serialize)]
-pub struct GenericResponse {
-    pub status: String,
-    pub message: String,
 }
 
 fn invite_code_admin_to_response(user: &InviteCodeAdmin) -> InviteCodeAdminData {
@@ -58,15 +51,5 @@ fn invite_code_admin_to_response(user: &InviteCodeAdmin) -> InviteCodeAdminData 
         otp_base32: user.otp_base32.to_owned(),
         otp_enabled: user.otp_enabled.eq(&1),
         otp_verified: user.otp_verified.eq(&1),
-    }
-}
-
-fn get_user_id(session: actix_session::Session) -> Result<String, HttpResponse> {
-    match session.get("username") {
-        Ok(user_id_key) => match user_id_key {
-            None => Err(HttpResponse::Unauthorized().finish()),
-            Some(id) => Ok(id),
-        },
-        Err(_e) => Err(HttpResponse::InternalServerError().finish()),
     }
 }
