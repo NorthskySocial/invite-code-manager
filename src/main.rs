@@ -30,12 +30,24 @@ fn init_db(database_url: &str, db_min_idle: &str) -> Pool<ConnectionManager<Sqli
 }
 
 fn create_cors() -> Cors {
-    Cors::default()
-        .allow_any_origin()
-        .allowed_methods(vec!["GET", "POST"])
-        .allowed_headers(vec![CONTENT_TYPE, ACCESS_CONTROL_ALLOW_ORIGIN])
+    let allowed_origin = env::var("ALLOWED_ORIGIN").unwrap_or_else(|_| "*".to_string());
+
+    let cors = Cors::default()
+        .allowed_methods(vec!["GET", "POST", "OPTIONS"])
+        .allowed_headers(vec![
+            CONTENT_TYPE,
+            ACCESS_CONTROL_ALLOW_ORIGIN,
+            actix_web::http::header::AUTHORIZATION,
+            actix_web::http::header::ACCEPT,
+        ])
         .supports_credentials()
-        .max_age(3600)
+        .max_age(3600);
+
+    if allowed_origin == "*" {
+        cors.allow_any_origin()
+    } else {
+        cors.allowed_origin(&allowed_origin)
+    }
 }
 
 #[actix_rt::main]
