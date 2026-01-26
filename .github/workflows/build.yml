@@ -46,9 +46,28 @@ jobs:
           cargo -vV
       - name: "Enable Rust Caching"
         uses: Swatinem/rust-cache@v2
+      - name: "Cache Tarpaulin"
+        id: cache-tarpaulin
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-tarpaulin
+          key: ${{ runner.os }}-tarpaulin
+      - name: "Install Tarpaulin"
+        if: steps.cache-tarpaulin.outputs.cache-hit != 'true'
+        run: cargo install cargo-tarpaulin
       - name: "Run Tests"
         id: tests
         run: cargo test
+      - name: "Run Coverage"
+        id: coverage
+        run: cargo tarpaulin --out xml --out html
+      - name: "Upload Coverage"
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-coverage-report
+          path: |
+            tarpaulin-report.xml
+            tarpaulin-report.html
       - name: "Run Clippy"
         id: clippy
         run: cargo clippy -- -D warnings

@@ -33,12 +33,13 @@ fn create_cors() -> Cors {
     let allowed_origin = env::var("ALLOWED_ORIGIN").unwrap_or_else(|_| "*".to_string());
 
     let cors = Cors::default()
-        .allowed_methods(vec!["GET", "POST", "OPTIONS"])
+        .allowed_methods(vec!["GET", "POST", "PATCH", "DELETE", "OPTIONS"])
         .allowed_headers(vec![
             CONTENT_TYPE,
-            ACCESS_CONTROL_ALLOW_ORIGIN,
             actix_web::http::header::AUTHORIZATION,
             actix_web::http::header::ACCEPT,
+            ACCESS_CONTROL_ALLOW_ORIGIN,
+            actix_web::http::header::X_CONTENT_TYPE_OPTIONS,
         ])
         .supports_credentials()
         .max_age(3600);

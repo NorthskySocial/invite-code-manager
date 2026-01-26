@@ -3,3 +3,6 @@
 database.sqlite
 Cargo.lock
 
+/invitemanager.sqlite
+/database
+/.output.txt

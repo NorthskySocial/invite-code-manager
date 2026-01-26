@@ -21,7 +21,7 @@ pub struct InviteCodeAdmin {
     pub otp_verified: i32,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct VerifyOTPSchema {
     pub token: String,
 }

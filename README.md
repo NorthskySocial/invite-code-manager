@@ -129,17 +129,31 @@ variable.
 
 ## Testing
 
-**TODO**: Tests are not currently implemented in this project. Future work should include:
+Unit and integration tests are implemented in the project.
 
-- Unit tests for core functionality
-- Integration tests for API endpoints
-- Database migration tests
-
-To run tests when implemented:
+To run the tests:
 
 ```bash
 cargo test
 ```
+
+### Code Coverage
+
+Code coverage is generated using `cargo-tarpaulin`.
+
+1. **Install Tarpaulin**
+   ```bash
+   cargo install cargo-tarpaulin
+   ```
+
+2. **Run Coverage**
+   ```bash
+   cargo tarpaulin --out html
+   ```
+   This will generate a `tarpaulin-report.html` file with the coverage results.
+
+The project also has a GitHub Action configured to generate and upload coverage reports on every
+push and pull request.
 
 ## Project Structure
 
