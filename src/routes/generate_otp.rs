@@ -4,12 +4,30 @@ use crate::user::InviteCodeAdmin;
 use actix_web::web::Data;
 use actix_web::{HttpResponse, post};
 use rand::Rng;
-use serde_json::json;
+use serde::Serialize;
 use totp_rs::{Algorithm, Secret, TOTP};
+use utoipa::ToSchema;
+
+#[derive(Serialize, ToSchema)]
+pub struct GenerateOTPResponse {
+    pub base32: String,
+    pub otpauth_url: String,
+}
 
 #[tracing::instrument(skip(data, user))]
+#[utoipa::path(
+    post,
+    path = "/auth/otp/generate",
+    responses(
+        (status = 200, description = "OTP generated successfully", body = GenerateOTPResponse),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("session_cookie" = [])
+    )
+)]
 #[post("/auth/otp/generate")]
-async fn generate_otp_handler(
+pub async fn generate_otp_handler(
     data: Data<DBPool>,
     user: InviteCodeAdmin,
 ) -> Result<HttpResponse, AppError> {
@@ -49,7 +67,10 @@ async fn generate_otp_handler(
         otp_auth_url.as_str(),
     );
 
-    Ok(HttpResponse::Ok().json(json!({"base32":otp_base32, "otpauth_url": otp_auth_url} )))
+    Ok(HttpResponse::Ok().json(GenerateOTPResponse {
+        base32: otp_base32,
+        otpauth_url: otp_auth_url,
+    }))
 }
 
 #[cfg(test)]

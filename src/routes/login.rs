@@ -2,18 +2,23 @@ use crate::LoginUser;
 use crate::error::AppError;
 use crate::helper::fetch_invite_code_admin_login;
 use crate::routes::{DBPool, invite_code_admin_to_response};
+use crate::user::InviteCodeAdminData;
 use actix_web::web::{Data, Json};
 use actix_web::{HttpResponse, post};
-use serde::{Deserialize, Serialize};
-
-#[derive(Serialize, Deserialize)]
-pub struct LoginResponse {
-    pub status: String,
-}
 
 #[tracing::instrument(skip(data, body, session))]
+#[utoipa::path(
+    post,
+    path = "/auth/login",
+    request_body = LoginUser,
+    responses(
+        (status = 200, description = "Login successful", body = InviteCodeAdminData),
+        (status = 201, description = "Login successful, OTP setup required", body = InviteCodeAdminData),
+        (status = 401, description = "Invalid credentials")
+    )
+)]
 #[post("/auth/login")]
-async fn login_user(
+pub async fn login_user(
     data: Data<DBPool>,
     body: Json<LoginUser>,
     session: actix_session::Session,

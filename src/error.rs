@@ -61,3 +61,64 @@ impl From<reqwest::Error> for AppError {
         AppError::PdsError(error.to_string())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use actix_web::ResponseError;
+
+    #[test]
+    fn test_error_display() {
+        assert_eq!(
+            format!("{}", AppError::AuthError("test".to_string())),
+            "Auth Error: test"
+        );
+        assert_eq!(
+            format!("{}", AppError::DatabaseError("test".to_string())),
+            "Database Error: test"
+        );
+        assert_eq!(
+            format!("{}", AppError::PdsError("test".to_string())),
+            "PDS Error: test"
+        );
+        assert_eq!(
+            format!("{}", AppError::InternalError("test".to_string())),
+            "Internal Error: test"
+        );
+        assert_eq!(
+            format!("{}", AppError::NotFound("test".to_string())),
+            "Not Found: test"
+        );
+    }
+
+    #[test]
+    fn test_error_status_code() {
+        assert_eq!(
+            AppError::AuthError("test".to_string()).status_code(),
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            AppError::DatabaseError("test".to_string()).status_code(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+        assert_eq!(
+            AppError::PdsError("test".to_string()).status_code(),
+            StatusCode::BAD_GATEWAY
+        );
+        assert_eq!(
+            AppError::InternalError("test".to_string()).status_code(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+        assert_eq!(
+            AppError::NotFound("test".to_string()).status_code(),
+            StatusCode::NOT_FOUND
+        );
+    }
+
+    #[test]
+    fn test_error_response() {
+        let err = AppError::AuthError("test".to_string());
+        let resp = err.error_response();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+}

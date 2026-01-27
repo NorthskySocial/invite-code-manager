@@ -8,12 +8,14 @@ use actix_web::{FromRequest, HttpRequest};
 use diesel::{Insertable, QueryDsl, Queryable, RunQueryDsl, Selectable, SelectableHelper};
 use serde::{Deserialize, Serialize};
 use std::future::{Ready, ready};
+use utoipa::ToSchema;
 
-#[derive(Queryable, Selectable, Clone, Debug, Deserialize, Serialize, Insertable)]
+#[derive(Queryable, Selectable, Clone, Debug, Deserialize, Serialize, Insertable, ToSchema)]
 #[diesel(table_name = crate::schema::invite_code_admin)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct InviteCodeAdmin {
     pub username: String,
+    #[serde(skip_serializing)]
     pub password: String,
     pub otp_base32: Option<String>,
     pub otp_auth_url: Option<String>,
@@ -21,12 +23,12 @@ pub struct InviteCodeAdmin {
     pub otp_verified: i32,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct VerifyOTPSchema {
     pub token: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, ToSchema)]
 pub struct InviteCodeAdminData {
     pub username: String,
     pub otp_enabled: bool,
@@ -80,7 +82,7 @@ impl FromRequest for InviteCodeAdmin {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, ToSchema)]
 pub struct CreateInviteCodeSchema {
     #[serde(rename = "codeCount")]
     pub code_count: i32,
@@ -88,13 +90,13 @@ pub struct CreateInviteCodeSchema {
     pub use_count: i32,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, ToSchema)]
 pub struct CreateInviteCodeResponseSchema {
     pub account: String,
     pub codes: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, ToSchema)]
 pub struct DisableInviteCodeSchema {
     pub codes: Vec<String>,
     pub accounts: Vec<String>,

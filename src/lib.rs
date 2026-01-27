@@ -11,8 +11,10 @@ pub mod user;
 
 use alloc::string::String;
 
+use utoipa::ToSchema;
+
 // Shared structures that are used across modules
-#[derive(serde::Deserialize, Debug, serde::Serialize)]
+#[derive(serde::Deserialize, Debug, serde::Serialize, ToSchema)]
 pub struct LoginUser {
     pub username: String,
     pub password: String,

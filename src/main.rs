@@ -21,6 +21,63 @@ use invite_code_manager::routes::remove_admin::remove_admin_handler;
 use invite_code_manager::routes::validate_otp::validate_otp_handler;
 use invite_code_manager::routes::verify_otp::verify_otp_handler;
 use std::{env, io};
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
+
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        invite_code_manager::routes::health::healthcheck_handler,
+        invite_code_manager::routes::login::login_user,
+        invite_code_manager::routes::generate_otp::generate_otp_handler,
+        invite_code_manager::routes::verify_otp::verify_otp_handler,
+        invite_code_manager::routes::validate_otp::validate_otp_handler,
+        invite_code_manager::routes::create_invite_codes::create_invite_codes_handler,
+        invite_code_manager::routes::get_invite_codes::get_invite_codes_handler,
+        invite_code_manager::routes::disable_invite_codes::disable_invite_codes_handler,
+        invite_code_manager::routes::add_admin::add_admin_handler,
+        invite_code_manager::routes::remove_admin::remove_admin_handler,
+        invite_code_manager::routes::list_admins::list_admins_handler,
+    ),
+    components(
+        schemas(
+            invite_code_manager::LoginUser,
+            invite_code_manager::user::InviteCodeAdminData,
+            invite_code_manager::user::VerifyOTPSchema,
+            invite_code_manager::user::CreateInviteCodeSchema,
+            invite_code_manager::user::DisableInviteCodeSchema,
+            invite_code_manager::routes::add_admin::AddAdminRequest,
+            invite_code_manager::routes::add_admin::AddAdminResponse,
+            invite_code_manager::routes::remove_admin::RemoveAdminRequest,
+            invite_code_manager::routes::remove_admin::RemoveAdminResponse,
+            invite_code_manager::routes::list_admins::ListAdminsResponse,
+            invite_code_manager::routes::generate_otp::GenerateOTPResponse,
+            invite_code_manager::routes::verify_otp::VerifyOTPResponse,
+            invite_code_manager::routes::validate_otp::ValidateOTPResponse,
+            invite_code_manager::routes::Code,
+            invite_code_manager::routes::Use,
+            invite_code_manager::routes::InviteCodes,
+        )
+    ),
+    modifiers(&SecurityAddon)
+)]
+struct ApiDoc;
+
+struct SecurityAddon;
+
+impl utoipa::Modify for SecurityAddon {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        let components = openapi.components.as_mut().unwrap();
+        components.add_security_scheme(
+            "session_cookie",
+            utoipa::openapi::security::SecurityScheme::ApiKey(
+                utoipa::openapi::security::ApiKey::Cookie(
+                    utoipa::openapi::security::ApiKeyValue::new("actix-session"),
+                ),
+            ),
+        )
+    }
+}
 
 fn init_db(database_url: &str, db_min_idle: &str) -> Pool<ConnectionManager<SqliteConnection>> {
     let manager = ConnectionManager::<SqliteConnection>::new(database_url);
@@ -120,6 +177,10 @@ async fn main() -> io::Result<()> {
             ))
             .app_data(Data::new(db_pool.clone()))
             .app_data(Data::new(config.clone()))
+            .service(
+                SwaggerUi::new("/swagger-ui/{_:.*}")
+                    .url("/api-docs/openapi.json", ApiDoc::openapi()),
+            )
             .service(healthcheck_handler)
             .service(login_user)
             .service(generate_otp_handler)

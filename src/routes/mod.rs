@@ -2,6 +2,7 @@ use crate::user::{InviteCodeAdmin, InviteCodeAdminData};
 use diesel::SqliteConnection;
 use diesel::r2d2::{ConnectionManager, Pool};
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 pub mod add_admin;
 pub mod create_invite_codes;
@@ -17,7 +18,7 @@ pub mod verify_otp;
 
 pub type DBPool = Pool<ConnectionManager<SqliteConnection>>;
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, ToSchema)]
 pub struct Use {
     #[serde(rename = "usedBy")]
     pub used_by: String,
@@ -25,7 +26,7 @@ pub struct Use {
     pub used_at: String,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, ToSchema)]
 pub struct Code {
     pub code: String,
     pub available: i32,
@@ -39,7 +40,7 @@ pub struct Code {
     pub uses: Vec<Use>,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, ToSchema)]
 pub struct InviteCodes {
     pub cursor: Option<String>,
     pub codes: Vec<Code>,

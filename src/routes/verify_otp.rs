@@ -1,16 +1,35 @@
 use crate::error::AppError;
 use crate::helper::{DBPool, verify_otp};
 use crate::routes::invite_code_admin_to_response;
-use crate::user::{InviteCodeAdmin, VerifyOTPSchema};
+use crate::user::{InviteCodeAdmin, InviteCodeAdminData, VerifyOTPSchema};
 use actix_web::web::{Data, Json};
 use actix_web::{HttpResponse, post};
-use serde_json::json;
+use serde::Serialize;
 use totp_rs::{Algorithm, Secret, TOTP};
+use utoipa::ToSchema;
+
+#[derive(Serialize, ToSchema)]
+pub struct VerifyOTPResponse {
+    pub otp_verified: bool,
+    pub user: InviteCodeAdminData,
+}
 
 #[tracing::instrument(skip(data, invite_code_admin, session), fields(user_id = %invite_code_admin.username.clone()
 ))]
+#[utoipa::path(
+    post,
+    path = "/auth/otp/verify",
+    request_body = VerifyOTPSchema,
+    responses(
+        (status = 200, description = "OTP verified successfully", body = VerifyOTPResponse),
+        (status = 401, description = "Unauthorized or invalid token")
+    ),
+    security(
+        ("session_cookie" = [])
+    )
+)]
 #[post("/auth/otp/verify")]
-async fn verify_otp_handler(
+pub async fn verify_otp_handler(
     body: Json<VerifyOTPSchema>,
     data: Data<DBPool>,
     invite_code_admin: InviteCodeAdmin,
@@ -49,9 +68,10 @@ async fn verify_otp_handler(
         .insert("otp_validated", invite_code_admin.username.clone())
         .map_err(|e| AppError::InternalError(format!("Session error: {}", e)))?;
 
-    Ok(HttpResponse::Ok().json(
-        json!({"otp_verified": true, "user": invite_code_admin_to_response(&invite_code_admin)}),
-    ))
+    Ok(HttpResponse::Ok().json(VerifyOTPResponse {
+        otp_verified: true,
+        user: invite_code_admin_to_response(&invite_code_admin),
+    }))
 }
 
 #[cfg(test)]
