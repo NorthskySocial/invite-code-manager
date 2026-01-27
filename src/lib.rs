@@ -312,4 +312,36 @@ mod tests {
         let no_user_result = fetch_invite_code_admin_login(&mut conn, "wronguser", "mypassword");
         assert!(no_user_result.is_none());
     }
+
+    #[test]
+    fn test_list_admins() {
+        use crate::schema::invite_code_admin::dsl::invite_code_admin;
+        use crate::user::InviteCodeAdmin;
+        use diesel::{QueryDsl, RunQueryDsl, SelectableHelper};
+        let pool = setup_test_db();
+        let mut conn = pool.get().expect("Failed to get connection");
+
+        // Initially no admins or only what setup_test_db might have (it seems to be clean)
+        let initial_results = invite_code_admin
+            .select(InviteCodeAdmin::as_select())
+            .load::<InviteCodeAdmin>(&mut conn)
+            .expect("DB Exception");
+        let initial_count = initial_results.len();
+
+        // Create some admins
+        create_invite_code_admin(&mut conn, "list_admin1", "pass1")
+            .expect("Failed to create admin");
+        create_invite_code_admin(&mut conn, "list_admin2", "pass2")
+            .expect("Failed to create admin");
+
+        // List admins
+        let results = invite_code_admin
+            .select(InviteCodeAdmin::as_select())
+            .load::<InviteCodeAdmin>(&mut conn)
+            .expect("DB Exception");
+
+        assert_eq!(results.len(), initial_count + 2);
+        assert!(results.iter().any(|u| u.username == "list_admin1"));
+        assert!(results.iter().any(|u| u.username == "list_admin2"));
+    }
 }

@@ -3,7 +3,7 @@ use crate::helper::delete_invite_code_admin;
 use crate::routes::DBPool;
 use crate::user::InviteCodeAdmin;
 use actix_web::web::{Data, Json};
-use actix_web::{HttpResponse, post};
+use actix_web::{HttpResponse, delete};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -18,7 +18,7 @@ pub struct RemoveAdminResponse {
 }
 
 #[tracing::instrument(skip(data, body, user))]
-#[post("/admin/remove")]
+#[delete("/invite-codes/admins")]
 pub async fn remove_admin_handler(
     data: Data<DBPool>,
     body: Json<RemoveAdminRequest>,

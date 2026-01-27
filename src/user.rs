@@ -26,7 +26,7 @@ pub struct VerifyOTPSchema {
     pub token: String,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct InviteCodeAdminData {
     pub username: String,
     pub otp_enabled: bool,

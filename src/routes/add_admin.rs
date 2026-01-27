@@ -19,7 +19,7 @@ pub struct AddAdminResponse {
 }
 
 #[tracing::instrument(skip(data, body, _user))]
-#[post("/admin/add")]
+#[post("/invite-codes/admins")]
 pub async fn add_admin_handler(
     data: Data<DBPool>,
     body: Json<AddAdminRequest>,

@@ -15,6 +15,7 @@ use invite_code_manager::routes::disable_invite_codes::disable_invite_codes_hand
 use invite_code_manager::routes::generate_otp::generate_otp_handler;
 use invite_code_manager::routes::get_invite_codes::get_invite_codes_handler;
 use invite_code_manager::routes::health::healthcheck_handler;
+use invite_code_manager::routes::list_admins::list_admins_handler;
 use invite_code_manager::routes::login::login_user;
 use invite_code_manager::routes::remove_admin::remove_admin_handler;
 use invite_code_manager::routes::validate_otp::validate_otp_handler;
@@ -129,6 +130,7 @@ async fn main() -> io::Result<()> {
             .service(disable_invite_codes_handler)
             .service(add_admin_handler)
             .service(remove_admin_handler)
+            .service(list_admins_handler)
     })
     .bind(format!("0.0.0.0:{}", server_port))?
     .workers(worker_count)

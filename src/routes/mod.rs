@@ -9,6 +9,7 @@ pub mod disable_invite_codes;
 pub mod generate_otp;
 pub mod get_invite_codes;
 pub mod health;
+pub mod list_admins;
 pub mod login;
 pub mod remove_admin;
 pub mod validate_otp;
