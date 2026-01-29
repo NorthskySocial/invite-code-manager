@@ -65,7 +65,7 @@ pub async fn verify_otp_handler(
     verify_otp(&mut conn, invite_code_admin.username.as_str());
 
     session
-        .insert("otp_validated", invite_code_admin.username.clone())
+        .insert("otp_validated", "y")
         .map_err(|e| AppError::InternalError(format!("Session error: {}", e)))?;
 
     Ok(HttpResponse::Ok().json(VerifyOTPResponse {

@@ -1,6 +1,7 @@
 extern crate argon2;
 
 use actix_cors::Cors;
+use actix_web::cookie::Key;
 use actix_web::http::header::{ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE};
 use actix_web::web::Data;
 use actix_web::{App, HttpServer, middleware};
@@ -72,7 +73,7 @@ impl utoipa::Modify for SecurityAddon {
             "session_cookie",
             utoipa::openapi::security::SecurityScheme::ApiKey(
                 utoipa::openapi::security::ApiKey::Cookie(
-                    utoipa::openapi::security::ApiKeyValue::new("actix-session"),
+                    utoipa::openapi::security::ApiKeyValue::new("invite_manager_session"),
                 ),
             ),
         )
@@ -165,16 +166,30 @@ async fn main() -> io::Result<()> {
         "[Invite Code Manager] Starting server on port {}",
         server_port
     );
+
+    let session_key = env::var("SESSION_KEY")
+        .map(|s| Key::from(s.as_bytes()))
+        .unwrap_or_else(|_| Key::from(&[0; 64]));
+
     HttpServer::new(move || {
-        let secret_key = actix_web::cookie::Key::from(&[0; 64]);
         let cors = create_cors();
         App::new()
             .wrap(middleware::Logger::default())
             .wrap(cors)
-            .wrap(actix_session::SessionMiddleware::new(
-                actix_session::storage::CookieSessionStore::default(),
-                secret_key.clone(),
-            ))
+            .wrap(
+                actix_session::SessionMiddleware::builder(
+                    actix_session::storage::CookieSessionStore::default(),
+                    session_key.clone(),
+                )
+                .cookie_http_only(true)
+                .cookie_secure(true)
+                .cookie_same_site(actix_web::cookie::SameSite::Strict)
+                .cookie_name("invite_manager_session".to_string())
+                .session_lifecycle(actix_session::config::SessionLifecycle::BrowserSession(
+                    actix_session::config::BrowserSession::default(),
+                ))
+                .build(),
+            )
             .app_data(Data::new(db_pool.clone()))
             .app_data(Data::new(config.clone()))
             .service(

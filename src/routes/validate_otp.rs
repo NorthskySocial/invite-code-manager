@@ -60,7 +60,7 @@ pub async fn validate_otp_handler(
     }
 
     session
-        .insert("otp_validated", invite_code_admin.username.clone())
+        .insert("otp_validated", "y")
         .map_err(|e| AppError::InternalError(format!("Session error: {}", e)))?;
 
     Ok(HttpResponse::Ok().json(ValidateOTPResponse { otp_valid: true }))

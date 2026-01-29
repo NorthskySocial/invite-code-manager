@@ -42,7 +42,8 @@ impl FromRequest for InviteCodeAdmin {
     type Future = Ready<Result<Self, Self::Error>>;
 
     fn from_request(req: &HttpRequest, _payload: &mut Payload) -> Self::Future {
-        let username_session = match req.get_session().get::<String>("username") {
+        let session = req.get_session();
+        let username_session = match session.get::<String>("username") {
             Ok(Some(u)) => u,
             _ => return ready(Err(AppError::AuthError("Not logged in".to_string()))),
         };
@@ -72,6 +73,12 @@ impl FromRequest for InviteCodeAdmin {
         match results {
             Ok(admins) => {
                 if let Some(admin) = admins.into_iter().next() {
+                    if admin.otp_verified == 1 {
+                        let otp_validated = session.get::<String>("otp_validated").unwrap_or(None);
+                        if otp_validated.is_none() {
+                            return ready(Err(AppError::AuthError("2FA required".to_string())));
+                        }
+                    }
                     ready(Ok(admin))
                 } else {
                     ready(Err(AppError::NotFound("Admin user not found".to_string())))

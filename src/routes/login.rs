@@ -41,12 +41,12 @@ pub async fn login_user(
                 .map_err(|e| AppError::InternalError(format!("Session error: {}", e)))?;
 
             if user.otp_verified == 1 {
-                session
-                    .insert("otp_enabled", "y")
-                    .map_err(|e| AppError::InternalError(format!("Session error: {}", e)))?;
                 let response = invite_code_admin_to_response(&user);
                 Ok(HttpResponse::Ok().json(response))
             } else {
+                session
+                    .insert("2fa_not_required", "y")
+                    .map_err(|e| AppError::InternalError(format!("Session error: {}", e)))?;
                 let response = invite_code_admin_to_response(&user);
                 Ok(HttpResponse::Created().json(response))
             }
