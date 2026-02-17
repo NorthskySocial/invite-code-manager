@@ -1,13 +1,12 @@
+use crate::apis::DBPool;
+use crate::db::fetch_invite_code_admin;
 use crate::error::AppError;
-use crate::helper::DBPool;
-use crate::schema::invite_code_admin::username;
-use actix_session::SessionExt;
-use actix_web::dev::Payload;
-use actix_web::web::Data;
-use actix_web::{FromRequest, HttpRequest};
-use diesel::{Insertable, QueryDsl, Queryable, RunQueryDsl, Selectable, SelectableHelper};
+use axum::async_trait;
+use axum::extract::{FromRef, FromRequestParts};
+use axum::http::request::Parts;
+use diesel::{Insertable, Queryable, Selectable};
 use serde::{Deserialize, Serialize};
-use std::future::{Ready, ready};
+use tower_sessions::Session;
 use utoipa::ToSchema;
 
 #[derive(Queryable, Selectable, Clone, Debug, Deserialize, Serialize, Insertable, ToSchema)]
@@ -21,6 +20,48 @@ pub struct InviteCodeAdmin {
     pub otp_auth_url: Option<String>,
     pub otp_enabled: i32,
     pub otp_verified: i32,
+}
+
+#[async_trait]
+impl<S> FromRequestParts<S> for InviteCodeAdmin
+where
+    DBPool: FromRef<S>,
+    S: Send + Sync,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let session = Session::from_request_parts(parts, state)
+            .await
+            .map_err(|e| AppError::InternalError(format!("Session error: {:?}", e)))?;
+
+        let username: String = session
+            .get("username")
+            .await
+            .map_err(|e| AppError::InternalError(format!("Session error: {:?}", e)))?
+            .ok_or_else(|| AppError::AuthError("Not logged in".to_string()))?;
+
+        let db_pool = DBPool::from_ref(state);
+        let mut conn = db_pool
+            .get()
+            .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+
+        let admin = fetch_invite_code_admin(&mut conn, &username)
+            .ok_or_else(|| AppError::AuthError("User not found".to_string()))?;
+
+        if admin.otp_verified == 1 {
+            let otp_validated: Option<String> = session
+                .get("otp_validated")
+                .await
+                .map_err(|e| AppError::InternalError(format!("Session error: {:?}", e)))?;
+
+            if otp_validated.is_none() {
+                return Err(AppError::AuthError("2FA required".to_string()));
+            }
+        }
+
+        Ok(admin)
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
@@ -37,57 +78,7 @@ pub struct InviteCodeAdminData {
     pub otp_auth_url: Option<String>,
 }
 
-impl FromRequest for InviteCodeAdmin {
-    type Error = AppError;
-    type Future = Ready<Result<Self, Self::Error>>;
-
-    fn from_request(req: &HttpRequest, _payload: &mut Payload) -> Self::Future {
-        let session = req.get_session();
-        let username_session = match session.get::<String>("username") {
-            Ok(Some(u)) => u,
-            _ => return ready(Err(AppError::AuthError("Not logged in".to_string()))),
-        };
-
-        let db = match req.app_data::<Data<DBPool>>() {
-            None => {
-                return ready(Err(AppError::InternalError(
-                    "Database pool not found".to_string(),
-                )));
-            }
-            Some(conn) => conn.to_owned(),
-        };
-
-        use crate::schema::invite_code_admin::dsl::invite_code_admin;
-        use diesel::ExpressionMethods;
-
-        let mut conn = match db.get() {
-            Ok(c) => c,
-            Err(e) => return ready(Err(AppError::DatabaseError(e.to_string()))),
-        };
-
-        let results = invite_code_admin
-            .filter(username.eq(username_session))
-            .select(InviteCodeAdmin::as_select())
-            .load(&mut conn);
-
-        match results {
-            Ok(admins) => {
-                if let Some(admin) = admins.into_iter().next() {
-                    if admin.otp_verified == 1 {
-                        let otp_validated = session.get::<String>("otp_validated").unwrap_or(None);
-                        if otp_validated.is_none() {
-                            return ready(Err(AppError::AuthError("2FA required".to_string())));
-                        }
-                    }
-                    ready(Ok(admin))
-                } else {
-                    ready(Err(AppError::NotFound("Admin user not found".to_string())))
-                }
-            }
-            Err(e) => ready(Err(AppError::DatabaseError(e.to_string()))),
-        }
-    }
-}
+// TODO: Re-implement Axum extractor for InviteCodeAdmin after all routes are migrated.
 
 #[derive(Serialize, Deserialize, ToSchema)]
 pub struct CreateInviteCodeSchema {

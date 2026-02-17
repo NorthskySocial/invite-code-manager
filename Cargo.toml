@@ -5,13 +5,15 @@ edition = "2024"
 
 [dependencies]
 env_logger = "0.11.7"
-actix-rt = "2.10.0"
-actix-web = "4.8.0"
+tokio = { version = "1.38.0", features = ["full"] }
+axum = { version = "0.7.5", features = ["macros"] }
+tower = { version = "0.4.13", features = ["util"] }
+tower-http = { version = "0.5.2", features = ["cors", "trace", "fs"] }
+tower-sessions = "0.12.2"
 serde = { version = "1.0.204", features = ["derive"] }
 dotenvy = "0.15.7"
-actix-session = { version = "0.11.0", features = ["cookie-session"] }
-actix-cors = "0.7.0"
 diesel = { version = "2.2.2", features = ["sqlite", "r2d2"] }
+deadpool-diesel = { version = "0.6.1", features = ["sqlite"] }
 rand = "0.9.2"
 totp-rs = "5.4.0"
 base32 = "0.5.1"
@@ -20,8 +22,8 @@ reqwest = { version = "0.13.1", features = ["json", "query"] }
 rpassword = "7.4.0"
 rust-argon2 = "3.0.0"
 tracing = "0.1.41"
-utoipa = { version = "5.3.1" }
-utoipa-swagger-ui = { version = "9.0.0", features = ["actix-web"] }
+utoipa = { version = "5.3.1", features = ["axum_extras"] }
+utoipa-swagger-ui = { version = "9.0.0", features = ["axum"] }
 
 [package.metadata.tarpaulin]
 exclude-files = [

@@ -1,9 +1,8 @@
+use crate::apis::DBPool;
+use crate::db::create_invite_code_admin;
 use crate::error::AppError;
-use crate::helper::create_invite_code_admin;
-use crate::routes::DBPool;
 use crate::user::InviteCodeAdmin;
-use actix_web::web::{Data, Json};
-use actix_web::{HttpResponse, post};
+use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -19,7 +18,14 @@ pub struct AddAdminResponse {
     pub password: String,
 }
 
-#[tracing::instrument(skip(data, body, _user))]
+fn validate_add_admin_request(body: &AddAdminRequest) -> Result<(), AppError> {
+    if body.username.trim().is_empty() {
+        return Err(AppError::BadRequest("Username cannot be empty".to_string()));
+    }
+    Ok(())
+}
+
+#[tracing::instrument(skip(db_pool, body, _user))]
 #[utoipa::path(
     post,
     path = "/admins",
@@ -34,26 +40,21 @@ pub struct AddAdminResponse {
         ("session_cookie" = [])
     )
 )]
-#[post("/admins")]
 pub async fn add_admin_handler(
-    data: Data<DBPool>,
-    body: Json<AddAdminRequest>,
-    _user: InviteCodeAdmin, // Requires authentication
-) -> Result<HttpResponse, AppError> {
+    State(db_pool): State<DBPool>,
+    _user: InviteCodeAdmin,
+    Json(body): Json<AddAdminRequest>,
+) -> Result<impl IntoResponse, AppError> {
     tracing::info!("Adding new admin user: {}", body.username);
 
     // Validate input
-    if body.username.trim().is_empty() {
-        return Err(AppError::InternalError(
-            "Username cannot be empty".to_string(),
-        ));
-    }
+    validate_add_admin_request(&body)?;
 
     // Generate a random password
     let password: String =
         rand::distr::SampleString::sample_string(&rand::distr::Alphanumeric, &mut rand::rng(), 24);
 
-    let mut conn = data
+    let mut conn = db_pool
         .get()
         .map_err(|e| AppError::DatabaseError(e.to_string()))?;
     match create_invite_code_admin(&mut conn, body.username.as_str(), password.as_str()) {
@@ -63,7 +64,7 @@ pub async fn add_admin_handler(
                 message: format!("Admin user '{}' created successfully", body.username),
                 password,
             };
-            Ok(HttpResponse::Created().json(response))
+            Ok((StatusCode::CREATED, Json(response)))
         }
         Err(diesel::result::Error::DatabaseError(
             diesel::result::DatabaseErrorKind::UniqueViolation,
@@ -82,13 +83,16 @@ pub async fn add_admin_handler(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::Config;
-    use actix_session::SessionMiddleware;
-    use actix_session::storage::CookieSessionStore;
-    use actix_web::{App, cookie::Key, test};
+    use axum::{
+        Router,
+        body::Body,
+        http::{Request, StatusCode},
+        routing::post,
+    };
     use diesel::RunQueryDsl;
     use diesel::SqliteConnection;
     use diesel::r2d2::{ConnectionManager, Pool};
+    use tower::ServiceExt;
 
     type TestDBPool = Pool<ConnectionManager<SqliteConnection>>;
 
@@ -119,38 +123,29 @@ mod tests {
         pool
     }
 
-    #[actix_web::test]
+    #[tokio::test]
     async fn test_add_admin_handler_unauthorized() {
         let pool = setup_test_db("add_admin_unauth");
 
-        let secret_key = Key::generate();
-        let config = Config {
-            pds_admin_password: "pds_password".to_string(),
-            pds_endpoint: "http://localhost".to_string(),
-        };
-
-        let app = test::init_service(
-            App::new()
-                .app_data(Data::new(pool.clone()))
-                .app_data(Data::new(config.clone()))
-                .wrap(SessionMiddleware::new(
-                    CookieSessionStore::default(),
-                    secret_key.clone(),
-                ))
-                .service(add_admin_handler),
-        )
-        .await;
+        let app = Router::new()
+            .route("/admins", post(add_admin_handler))
+            .with_state(pool.clone())
+            .layer(tower_sessions::SessionManagerLayer::new(
+                tower_sessions::MemoryStore::default(),
+            ));
 
         let payload = AddAdminRequest {
             username: "newadmin".to_string(),
         };
 
-        let req = test::TestRequest::post()
+        let req = Request::builder()
+            .method("POST")
             .uri("/admins")
-            .set_json(&payload)
-            .to_request();
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&payload).unwrap()))
+            .unwrap();
 
-        let resp = test::call_service(&app, req).await;
-        assert_eq!(resp.status(), actix_web::http::StatusCode::UNAUTHORIZED);
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
     }
 }

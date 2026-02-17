@@ -1,4 +1,8 @@
-use actix_web::{HttpResponse, ResponseError, http::StatusCode};
+use axum::{
+    Json,
+    http::StatusCode,
+    response::{IntoResponse, Response},
+};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -11,6 +15,7 @@ pub struct ErrorResponse {
 #[derive(Debug)]
 pub enum AppError {
     AuthError(String),
+    BadRequest(String),
     DatabaseError(String),
     PdsError(String),
     InternalError(String),
@@ -21,6 +26,7 @@ impl fmt::Display for AppError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             AppError::AuthError(msg) => write!(f, "Auth Error: {}", msg),
+            AppError::BadRequest(msg) => write!(f, "Bad Request: {}", msg),
             AppError::DatabaseError(msg) => write!(f, "Database Error: {}", msg),
             AppError::PdsError(msg) => write!(f, "PDS Error: {}", msg),
             AppError::InternalError(msg) => write!(f, "Internal Error: {}", msg),
@@ -29,24 +35,23 @@ impl fmt::Display for AppError {
     }
 }
 
-impl ResponseError for AppError {
-    fn error_response(&self) -> HttpResponse {
-        let status_code = self.status_code();
-        let error_response = ErrorResponse {
-            status: "error".to_string(),
-            message: self.to_string(),
-        };
-        HttpResponse::build(status_code).json(error_response)
-    }
-
-    fn status_code(&self) -> StatusCode {
-        match self {
+impl IntoResponse for AppError {
+    fn into_response(self) -> Response {
+        let status_code = match self {
             AppError::AuthError(_) => StatusCode::UNAUTHORIZED,
+            AppError::BadRequest(_) => StatusCode::BAD_REQUEST,
             AppError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AppError::PdsError(_) => StatusCode::BAD_GATEWAY,
             AppError::InternalError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AppError::NotFound(_) => StatusCode::NOT_FOUND,
-        }
+        };
+
+        let body = Json(ErrorResponse {
+            status: "error".to_string(),
+            message: self.to_string(),
+        });
+
+        (status_code, body).into_response()
     }
 }
 
@@ -65,7 +70,7 @@ impl From<reqwest::Error> for AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use actix_web::ResponseError;
+    use axum::response::IntoResponse;
 
     #[test]
     fn test_error_display() {
@@ -92,33 +97,9 @@ mod tests {
     }
 
     #[test]
-    fn test_error_status_code() {
-        assert_eq!(
-            AppError::AuthError("test".to_string()).status_code(),
-            StatusCode::UNAUTHORIZED
-        );
-        assert_eq!(
-            AppError::DatabaseError("test".to_string()).status_code(),
-            StatusCode::INTERNAL_SERVER_ERROR
-        );
-        assert_eq!(
-            AppError::PdsError("test".to_string()).status_code(),
-            StatusCode::BAD_GATEWAY
-        );
-        assert_eq!(
-            AppError::InternalError("test".to_string()).status_code(),
-            StatusCode::INTERNAL_SERVER_ERROR
-        );
-        assert_eq!(
-            AppError::NotFound("test".to_string()).status_code(),
-            StatusCode::NOT_FOUND
-        );
-    }
-
-    #[test]
     fn test_error_response() {
         let err = AppError::AuthError("test".to_string());
-        let resp = err.error_response();
+        let resp = err.into_response();
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
     }
 }

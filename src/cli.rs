@@ -1,4 +1,4 @@
-pub use crate::helper::DBPooledConnection;
+use crate::db::{DBPooledConnection, fetch_invite_code_admin};
 use crate::schema::invite_code_admin::dsl::invite_code_admin;
 use crate::user::InviteCodeAdmin;
 use argon2::Config;
@@ -21,7 +21,7 @@ pub fn create_user(conn: &mut DBPooledConnection) -> Result<(), Box<dyn Error>> 
     let username = username.trim();
 
     // Check if username already exists
-    if crate::helper::fetch_invite_code_admin(conn, username).is_some() {
+    if fetch_invite_code_admin(conn, username).is_some() {
         return Err(format!("User with username '{}' already exists", username).into());
     }
 

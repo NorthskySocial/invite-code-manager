@@ -1,12 +1,12 @@
 use crate::LoginUser;
+use crate::apis::{DBPool, invite_code_admin_to_response};
+use crate::db::fetch_invite_code_admin_login;
 use crate::error::AppError;
-use crate::helper::fetch_invite_code_admin_login;
-use crate::routes::{DBPool, invite_code_admin_to_response};
 use crate::user::InviteCodeAdminData;
-use actix_web::web::{Data, Json};
-use actix_web::{HttpResponse, post};
+use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
+use tower_sessions::Session;
 
-#[tracing::instrument(skip(data, body, session))]
+#[tracing::instrument(skip(db_pool, body, session))]
 #[utoipa::path(
     post,
     path = "/auth/login",
@@ -17,14 +17,13 @@ use actix_web::{HttpResponse, post};
         (status = 401, description = "Invalid credentials")
     )
 )]
-#[post("/auth/login")]
 pub async fn login_user(
-    data: Data<DBPool>,
-    body: Json<LoginUser>,
-    session: actix_session::Session,
-) -> Result<HttpResponse, AppError> {
+    State(db_pool): State<DBPool>,
+    session: Session,
+    Json(body): Json<LoginUser>,
+) -> Result<impl IntoResponse, AppError> {
     tracing::info!("Login user");
-    let mut conn = data
+    let mut conn = db_pool
         .get()
         .map_err(|e| AppError::DatabaseError(e.to_string()))?;
     let user =
@@ -35,20 +34,21 @@ pub async fn login_user(
             body.username
         ))),
         Some(user) => {
-            session.renew();
             session
                 .insert("username", body.username.clone())
-                .map_err(|e| AppError::InternalError(format!("Session error: {}", e)))?;
+                .await
+                .map_err(|e| AppError::InternalError(format!("Session error: {:?}", e)))?;
 
             if user.otp_verified == 1 {
                 let response = invite_code_admin_to_response(&user);
-                Ok(HttpResponse::Ok().json(response))
+                Ok((StatusCode::OK, Json(response)).into_response())
             } else {
                 session
                     .insert("2fa_not_required", "y")
-                    .map_err(|e| AppError::InternalError(format!("Session error: {}", e)))?;
+                    .await
+                    .map_err(|e| AppError::InternalError(format!("Session error: {:?}", e)))?;
                 let response = invite_code_admin_to_response(&user);
-                Ok(HttpResponse::Created().json(response))
+                Ok((StatusCode::CREATED, Json(response)).into_response())
             }
         }
     }
@@ -58,14 +58,18 @@ pub async fn login_user(
 mod tests {
     use super::*;
     use crate::LoginUser;
-    use crate::config::Config;
     use crate::helper::create_invite_code_admin;
-    use actix_session::SessionMiddleware;
-    use actix_session::storage::CookieSessionStore;
-    use actix_web::{App, cookie::Key, test};
+    use axum::{
+        Router,
+        body::Body,
+        http::{Request, StatusCode},
+        routing::post,
+    };
     use diesel::RunQueryDsl;
     use diesel::SqliteConnection;
     use diesel::r2d2::{ConnectionManager, Pool};
+    use tower::ServiceExt;
+    use tower_sessions::{MemoryStore, SessionManagerLayer};
 
     type TestDBPool = Pool<ConnectionManager<SqliteConnection>>;
 
@@ -96,7 +100,7 @@ mod tests {
         pool
     }
 
-    #[actix_web::test]
+    #[tokio::test]
     async fn test_login_user_success() {
         let pool = setup_test_db("login_success");
         let mut conn = pool.get().expect("Failed to get connection");
@@ -105,39 +109,31 @@ mod tests {
         create_invite_code_admin(&mut conn, "testuser", "testpassword")
             .expect("Failed to create user");
 
-        let secret_key = Key::generate();
-        let config = Config {
-            pds_admin_password: "pds_password".to_string(),
-            pds_endpoint: "http://localhost".to_string(),
-        };
+        let session_store = MemoryStore::default();
+        let session_layer = SessionManagerLayer::new(session_store);
 
-        let app = test::init_service(
-            App::new()
-                .app_data(Data::new(pool.clone()))
-                .app_data(Data::new(config.clone()))
-                .wrap(SessionMiddleware::new(
-                    CookieSessionStore::default(),
-                    secret_key.clone(),
-                ))
-                .service(login_user),
-        )
-        .await;
+        let app = Router::new()
+            .route("/auth/login", post(login_user))
+            .layer(session_layer)
+            .with_state(pool.clone());
 
         let login_payload = LoginUser {
             username: "testuser".to_string(),
             password: "testpassword".to_string(),
         };
 
-        let req = test::TestRequest::post()
+        let req = Request::builder()
+            .method("POST")
             .uri("/auth/login")
-            .set_json(&login_payload)
-            .to_request();
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&login_payload).unwrap()))
+            .unwrap();
 
-        let resp = test::call_service(&app, req).await;
+        let resp = app.oneshot(req).await.unwrap();
         assert!(resp.status().is_success());
     }
 
-    #[actix_web::test]
+    #[tokio::test]
     async fn test_login_user_invalid_credentials() {
         let pool = setup_test_db("login_invalid");
         let mut conn = pool.get().expect("Failed to get connection");
@@ -146,35 +142,27 @@ mod tests {
         create_invite_code_admin(&mut conn, "testuser", "testpassword")
             .expect("Failed to create user");
 
-        let secret_key = Key::generate();
-        let config = Config {
-            pds_admin_password: "pds_password".to_string(),
-            pds_endpoint: "http://localhost".to_string(),
-        };
+        let session_store = MemoryStore::default();
+        let session_layer = SessionManagerLayer::new(session_store);
 
-        let app = test::init_service(
-            App::new()
-                .app_data(Data::new(pool.clone()))
-                .app_data(Data::new(config.clone()))
-                .wrap(SessionMiddleware::new(
-                    CookieSessionStore::default(),
-                    secret_key.clone(),
-                ))
-                .service(login_user),
-        )
-        .await;
+        let app = Router::new()
+            .route("/auth/login", post(login_user))
+            .layer(session_layer)
+            .with_state(pool.clone());
 
         let login_payload = LoginUser {
             username: "testuser".to_string(),
             password: "wrongpassword".to_string(),
         };
 
-        let req = test::TestRequest::post()
+        let req = Request::builder()
+            .method("POST")
             .uri("/auth/login")
-            .set_json(&login_payload)
-            .to_request();
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&login_payload).unwrap()))
+            .unwrap();
 
-        let resp = test::call_service(&app, req).await;
-        assert_eq!(resp.status(), actix_web::http::StatusCode::UNAUTHORIZED);
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
     }
 }

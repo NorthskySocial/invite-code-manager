@@ -2,10 +2,9 @@ use crate::DISABLE_INVITE_CODES;
 use crate::config::Config;
 use crate::error::AppError;
 use crate::user::{DisableInviteCodeSchema, InviteCodeAdmin};
-use actix_web::web::{Data, Json};
-use actix_web::{HttpResponse, post};
+use axum::{Json, extract::State, response::IntoResponse};
 
-#[tracing::instrument(skip(config, body, _invite_code_admin), fields(user_id = %_invite_code_admin.username
+#[tracing::instrument(skip(config, _invite_code_admin, body), fields(user_id = %_invite_code_admin.username
 ))]
 #[utoipa::path(
     post,
@@ -20,12 +19,11 @@ use actix_web::{HttpResponse, post};
         ("session_cookie" = [])
     )
 )]
-#[post("/disable-invite-codes")]
 pub async fn disable_invite_codes_handler(
+    State(config): State<Config>,
     _invite_code_admin: InviteCodeAdmin,
-    body: Json<DisableInviteCodeSchema>,
-    config: Data<Config>,
-) -> Result<HttpResponse, AppError> {
+    Json(body): Json<DisableInviteCodeSchema>,
+) -> Result<impl IntoResponse, AppError> {
     let client = reqwest::Client::new();
     let res = client
         .post(config.pds_endpoint.clone() + DISABLE_INVITE_CODES)
@@ -44,19 +42,23 @@ pub async fn disable_invite_codes_handler(
         )));
     }
 
-    Ok(HttpResponse::Ok().finish())
+    Ok(Json(()))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::config::Config;
-    use actix_session::SessionMiddleware;
-    use actix_session::storage::CookieSessionStore;
-    use actix_web::{App, cookie::Key, test};
+    use axum::{
+        Router,
+        body::Body,
+        http::{Request, StatusCode},
+        routing::post,
+    };
     use diesel::RunQueryDsl;
     use diesel::SqliteConnection;
     use diesel::r2d2::{ConnectionManager, Pool};
+    use tower::ServiceExt;
 
     type TestDBPool = Pool<ConnectionManager<SqliteConnection>>;
 
@@ -87,39 +89,58 @@ mod tests {
         pool
     }
 
-    #[actix_web::test]
+    #[tokio::test]
     async fn test_disable_invite_codes_handler_unauthorized() {
         let pool = setup_test_db("disable_invite_unauth");
 
-        let secret_key = Key::generate();
         let config = Config {
             pds_admin_password: "pds_password".to_string(),
             pds_endpoint: "http://localhost".to_string(),
         };
 
-        let app = test::init_service(
-            App::new()
-                .app_data(Data::new(pool.clone()))
-                .app_data(Data::new(config.clone()))
-                .wrap(SessionMiddleware::new(
-                    CookieSessionStore::default(),
-                    secret_key.clone(),
-                ))
-                .service(disable_invite_codes_handler),
-        )
-        .await;
+        #[derive(Clone)]
+        struct TestState {
+            db_pool: TestDBPool,
+            config: Config,
+        }
+
+        impl axum::extract::FromRef<TestState> for crate::apis::DBPool {
+            fn from_ref(state: &TestState) -> crate::apis::DBPool {
+                state.db_pool.clone()
+            }
+        }
+
+        impl axum::extract::FromRef<TestState> for Config {
+            fn from_ref(state: &TestState) -> Config {
+                state.config.clone()
+            }
+        }
+
+        let state = TestState {
+            db_pool: pool,
+            config,
+        };
+
+        let app = Router::new()
+            .route("/disable-invite-codes", post(disable_invite_codes_handler))
+            .with_state(state)
+            .layer(tower_sessions::SessionManagerLayer::new(
+                tower_sessions::MemoryStore::default(),
+            ));
 
         let payload = DisableInviteCodeSchema {
             codes: vec!["code1".to_string()],
             accounts: vec!["acc1".to_string()],
         };
 
-        let req = test::TestRequest::post()
+        let req = Request::builder()
+            .method("POST")
             .uri("/disable-invite-codes")
-            .set_json(&payload)
-            .to_request();
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&payload).unwrap()))
+            .unwrap();
 
-        let resp = test::call_service(&app, req).await;
-        assert_eq!(resp.status(), actix_web::http::StatusCode::UNAUTHORIZED);
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
     }
 }

@@ -1,11 +1,11 @@
+use crate::apis::{DBPool, invite_code_admin_to_response};
+use crate::db::verify_otp;
 use crate::error::AppError;
-use crate::helper::{DBPool, verify_otp};
-use crate::routes::invite_code_admin_to_response;
 use crate::user::{InviteCodeAdmin, InviteCodeAdminData, VerifyOTPSchema};
-use actix_web::web::{Data, Json};
-use actix_web::{HttpResponse, post};
+use axum::{Json, extract::State, response::IntoResponse};
 use serde::Serialize;
 use totp_rs::{Algorithm, Secret, TOTP};
+use tower_sessions::Session;
 use utoipa::ToSchema;
 
 #[derive(Serialize, ToSchema)]
@@ -14,7 +14,7 @@ pub struct VerifyOTPResponse {
     pub user: InviteCodeAdminData,
 }
 
-#[tracing::instrument(skip(data, invite_code_admin, session), fields(user_id = %invite_code_admin.username.clone()
+#[tracing::instrument(skip(db_pool, invite_code_admin, session), fields(user_id = %invite_code_admin.username.clone()
 ))]
 #[utoipa::path(
     post,
@@ -28,13 +28,12 @@ pub struct VerifyOTPResponse {
         ("session_cookie" = [])
     )
 )]
-#[post("/auth/otp/verify")]
 pub async fn verify_otp_handler(
-    body: Json<VerifyOTPSchema>,
-    data: Data<DBPool>,
+    State(db_pool): State<DBPool>,
+    session: Session,
     invite_code_admin: InviteCodeAdmin,
-    session: actix_session::Session,
-) -> Result<HttpResponse, AppError> {
+    Json(body): Json<VerifyOTPSchema>,
+) -> Result<impl IntoResponse, AppError> {
     let otp_base32 = invite_code_admin
         .otp_base32
         .clone()
@@ -59,16 +58,17 @@ pub async fn verify_otp_handler(
         return Err(AppError::AuthError("Token is invalid".to_string()));
     }
 
-    let mut conn = data
+    let mut conn = db_pool
         .get()
         .map_err(|e| AppError::DatabaseError(e.to_string()))?;
     verify_otp(&mut conn, invite_code_admin.username.as_str());
 
     session
         .insert("otp_validated", "y")
-        .map_err(|e| AppError::InternalError(format!("Session error: {}", e)))?;
+        .await
+        .map_err(|e| AppError::InternalError(format!("Session error: {:?}", e)))?;
 
-    Ok(HttpResponse::Ok().json(VerifyOTPResponse {
+    Ok(Json(VerifyOTPResponse {
         otp_verified: true,
         user: invite_code_admin_to_response(&invite_code_admin),
     }))
@@ -77,13 +77,16 @@ pub async fn verify_otp_handler(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::Config;
-    use actix_session::SessionMiddleware;
-    use actix_session::storage::CookieSessionStore;
-    use actix_web::{App, cookie::Key, test, web::Data};
+    use axum::{
+        Router,
+        body::Body,
+        http::{Request, StatusCode},
+        routing::post,
+    };
     use diesel::RunQueryDsl;
     use diesel::SqliteConnection;
     use diesel::r2d2::{ConnectionManager, Pool};
+    use tower::ServiceExt;
 
     type TestDBPool = Pool<ConnectionManager<SqliteConnection>>;
 
@@ -114,39 +117,30 @@ mod tests {
         pool
     }
 
-    #[actix_web::test]
+    #[tokio::test]
     async fn test_verify_otp_handler_unauthorized() {
         let db_name = "verify_otp_unauth";
         let pool = setup_test_db(db_name);
 
-        let secret_key = Key::generate();
-        let config = Config {
-            pds_admin_password: "pds_password".to_string(),
-            pds_endpoint: "http://localhost".to_string(),
-        };
-
-        let app = test::init_service(
-            App::new()
-                .app_data(Data::new(pool.clone()))
-                .app_data(Data::new(config.clone()))
-                .wrap(SessionMiddleware::new(
-                    CookieSessionStore::default(),
-                    secret_key.clone(),
-                ))
-                .service(verify_otp_handler),
-        )
-        .await;
+        let app = Router::new()
+            .route("/auth/otp/verify", post(verify_otp_handler))
+            .with_state(pool.clone())
+            .layer(tower_sessions::SessionManagerLayer::new(
+                tower_sessions::MemoryStore::default(),
+            ));
 
         let payload = VerifyOTPSchema {
             token: "123456".to_string(),
         };
 
-        let req = test::TestRequest::post()
+        let req = Request::builder()
+            .method("POST")
             .uri("/auth/otp/verify")
-            .set_json(&payload)
-            .to_request();
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&payload).unwrap()))
+            .unwrap();
 
-        let resp = test::call_service(&app, req).await;
-        assert_eq!(resp.status(), actix_web::http::StatusCode::UNAUTHORIZED);
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
     }
 }

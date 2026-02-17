@@ -1,9 +1,8 @@
+use crate::apis::DBPool;
+use crate::db::delete_invite_code_admin;
 use crate::error::AppError;
-use crate::helper::delete_invite_code_admin;
-use crate::routes::DBPool;
 use crate::user::InviteCodeAdmin;
-use actix_web::web::{Data, Json};
-use actix_web::{HttpResponse, delete};
+use axum::{Json, extract::State, response::IntoResponse};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -18,7 +17,7 @@ pub struct RemoveAdminResponse {
     pub message: String,
 }
 
-#[tracing::instrument(skip(data, body, user))]
+#[tracing::instrument(skip(db_pool, body, user))]
 #[utoipa::path(
     delete,
     path = "/admins",
@@ -32,12 +31,11 @@ pub struct RemoveAdminResponse {
         ("session_cookie" = [])
     )
 )]
-#[delete("/admins")]
 pub async fn remove_admin_handler(
-    data: Data<DBPool>,
-    body: Json<RemoveAdminRequest>,
+    State(db_pool): State<DBPool>,
     user: InviteCodeAdmin, // Requires authentication
-) -> Result<HttpResponse, AppError> {
+    Json(body): Json<RemoveAdminRequest>,
+) -> Result<impl IntoResponse, AppError> {
     tracing::info!("Removing admin user: {}", body.username);
 
     // Validate input
@@ -54,7 +52,7 @@ pub async fn remove_admin_handler(
         ));
     }
 
-    let mut conn = data
+    let mut conn = db_pool
         .get()
         .map_err(|e| AppError::DatabaseError(e.to_string()))?;
     match delete_invite_code_admin(&mut conn, body.username.as_str()) {
@@ -64,7 +62,7 @@ pub async fn remove_admin_handler(
                     status: "success".to_string(),
                     message: format!("Admin user '{}' removed successfully", body.username),
                 };
-                Ok(HttpResponse::Ok().json(response))
+                Ok(Json(response))
             } else {
                 Err(AppError::NotFound(format!(
                     "Admin user '{}' not found",
@@ -82,13 +80,16 @@ pub async fn remove_admin_handler(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::Config;
-    use actix_session::SessionMiddleware;
-    use actix_session::storage::CookieSessionStore;
-    use actix_web::{App, cookie::Key, test};
+    use axum::{
+        Router,
+        body::Body,
+        http::{Request, StatusCode},
+        routing::delete,
+    };
     use diesel::RunQueryDsl;
     use diesel::SqliteConnection;
     use diesel::r2d2::{ConnectionManager, Pool};
+    use tower::ServiceExt;
 
     type TestDBPool = Pool<ConnectionManager<SqliteConnection>>;
 
@@ -119,38 +120,29 @@ mod tests {
         pool
     }
 
-    #[actix_web::test]
+    #[tokio::test]
     async fn test_remove_admin_handler_unauthorized() {
         let pool = setup_test_db("remove_admin_unauth");
 
-        let secret_key = Key::generate();
-        let config = Config {
-            pds_admin_password: "pds_password".to_string(),
-            pds_endpoint: "http://localhost".to_string(),
-        };
-
-        let app = test::init_service(
-            App::new()
-                .app_data(Data::new(pool.clone()))
-                .app_data(Data::new(config.clone()))
-                .wrap(SessionMiddleware::new(
-                    CookieSessionStore::default(),
-                    secret_key.clone(),
-                ))
-                .service(remove_admin_handler),
-        )
-        .await;
+        let app = Router::new()
+            .route("/admins", delete(remove_admin_handler))
+            .with_state(pool.clone())
+            .layer(tower_sessions::SessionManagerLayer::new(
+                tower_sessions::MemoryStore::default(),
+            ));
 
         let payload = RemoveAdminRequest {
             username: "admin_to_remove".to_string(),
         };
 
-        let req = test::TestRequest::delete()
+        let req = Request::builder()
+            .method("DELETE")
             .uri("/admins")
-            .set_json(&payload)
-            .to_request();
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&payload).unwrap()))
+            .unwrap();
 
-        let resp = test::call_service(&app, req).await;
-        assert_eq!(resp.status(), actix_web::http::StatusCode::UNAUTHORIZED);
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
     }
 }

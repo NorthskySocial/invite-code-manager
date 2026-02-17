@@ -1,8 +1,8 @@
+use crate::apis::DBPool;
+use crate::db::update_otp;
 use crate::error::AppError;
-use crate::helper::{DBPool, update_otp};
 use crate::user::InviteCodeAdmin;
-use actix_web::web::Data;
-use actix_web::{HttpResponse, post};
+use axum::{Json, extract::State, response::IntoResponse};
 use rand::Rng;
 use serde::Serialize;
 use totp_rs::{Algorithm, Secret, TOTP};
@@ -14,7 +14,7 @@ pub struct GenerateOTPResponse {
     pub otpauth_url: String,
 }
 
-#[tracing::instrument(skip(data, user))]
+#[tracing::instrument(skip(db_pool, user))]
 #[utoipa::path(
     post,
     path = "/auth/otp/generate",
@@ -26,11 +26,10 @@ pub struct GenerateOTPResponse {
         ("session_cookie" = [])
     )
 )]
-#[post("/auth/otp/generate")]
 pub async fn generate_otp_handler(
-    data: Data<DBPool>,
+    State(db_pool): State<DBPool>,
     user: InviteCodeAdmin,
-) -> Result<HttpResponse, AppError> {
+) -> Result<impl IntoResponse, AppError> {
     let username = user.username;
 
     if user.otp_verified == 1 {
@@ -57,7 +56,7 @@ pub async fn generate_otp_handler(
     let otp_auth_url =
         format!("otpauth://totp/{issuer}:{username}?secret={otp_base32}&issuer={issuer}");
 
-    let mut conn = data
+    let mut conn = db_pool
         .get()
         .map_err(|e| AppError::DatabaseError(e.to_string()))?;
     update_otp(
@@ -67,7 +66,7 @@ pub async fn generate_otp_handler(
         otp_auth_url.as_str(),
     );
 
-    Ok(HttpResponse::Ok().json(GenerateOTPResponse {
+    Ok(Json(GenerateOTPResponse {
         base32: otp_base32,
         otpauth_url: otp_auth_url,
     }))
@@ -76,13 +75,16 @@ pub async fn generate_otp_handler(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::Config;
-    use actix_session::SessionMiddleware;
-    use actix_session::storage::CookieSessionStore;
-    use actix_web::{App, cookie::Key, test, web::Data};
+    use axum::{
+        Router,
+        body::Body,
+        http::{Request, StatusCode},
+        routing::post,
+    };
     use diesel::RunQueryDsl;
     use diesel::SqliteConnection;
     use diesel::r2d2::{ConnectionManager, Pool};
+    use tower::ServiceExt;
 
     type TestDBPool = Pool<ConnectionManager<SqliteConnection>>;
 
@@ -113,34 +115,24 @@ mod tests {
         pool
     }
 
-    #[actix_web::test]
+    #[tokio::test]
     async fn test_generate_otp_handler_unauthorized() {
-        let db_name = "generate_otp_unauth";
-        let pool = setup_test_db(db_name);
+        let pool = setup_test_db("generate_otp_unauth");
 
-        let secret_key = Key::generate();
-        let config = Config {
-            pds_admin_password: "pds_password".to_string(),
-            pds_endpoint: "http://localhost".to_string(),
-        };
+        let app = Router::new()
+            .route("/auth/otp/generate", post(generate_otp_handler))
+            .with_state(pool.clone())
+            .layer(tower_sessions::SessionManagerLayer::new(
+                tower_sessions::MemoryStore::default(),
+            ));
 
-        let app = test::init_service(
-            App::new()
-                .app_data(Data::new(pool.clone()))
-                .app_data(Data::new(config.clone()))
-                .wrap(SessionMiddleware::new(
-                    CookieSessionStore::default(),
-                    secret_key.clone(),
-                ))
-                .service(generate_otp_handler),
-        )
-        .await;
-
-        let req = test::TestRequest::post()
+        let req = Request::builder()
+            .method("POST")
             .uri("/auth/otp/generate")
-            .to_request();
+            .body(Body::empty())
+            .unwrap();
 
-        let resp = test::call_service(&app, req).await;
-        assert_eq!(resp.status(), actix_web::http::StatusCode::UNAUTHORIZED);
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
     }
 }

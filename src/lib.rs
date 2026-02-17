@@ -1,17 +1,22 @@
 extern crate alloc;
 extern crate core;
 
+pub mod apis;
+pub mod auth;
 pub mod cli;
 pub mod config;
+pub mod db;
 pub mod error;
-pub mod helper;
-pub mod routes;
+pub mod models;
 pub mod schema;
 pub mod user;
 
 use alloc::string::String;
-
+use deadpool_diesel::sqlite::Pool;
 use utoipa::ToSchema;
+
+#[derive(Clone)]
+pub struct DbConn(pub Pool);
 
 // Shared structures that are used across modules
 #[derive(serde::Deserialize, Debug, serde::Serialize, ToSchema)]
@@ -20,18 +25,15 @@ pub struct LoginUser {
     pub password: String,
 }
 
-// Constants used by routes
+// Constants used by apis
 pub const GET_INVITE_CODES: &str = "/xrpc/com.atproto.admin.getInviteCodes";
 pub const DISABLE_INVITE_CODES: &str = "/xrpc/com.atproto.admin.disableInviteCodes";
 pub const CREATE_INVITE_CODES: &str = "/xrpc/com.atproto.server.createInviteCodes";
+pub const GET_ACCOUNT_INFOS: &str = "/xrpc/com.atproto.admin.getAccountInfos";
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::helper::{
-        create_invite_code_admin, delete_invite_code_admin, fetch_invite_code_admin,
-        fetch_invite_code_admin_login,
-    };
     use alloc::string::ToString;
     use alloc::vec;
     use core::{assert, assert_eq, assert_ne};

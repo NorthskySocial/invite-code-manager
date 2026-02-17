@@ -1,23 +1,31 @@
+use crate::DbConn;
 use crate::schema::invite_code_admin::{otp_auth_url, otp_base32};
 use crate::user::InviteCodeAdmin;
-use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
-use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl, SelectableHelper, SqliteConnection};
+use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl, SelectableHelper};
 
-pub type DBPool = Pool<ConnectionManager<SqliteConnection>>;
-pub type DBPooledConnection = PooledConnection<ConnectionManager<SqliteConnection>>;
-
-pub fn fetch_invite_code_admin_login(
-    conn: &mut DBPooledConnection,
+pub async fn fetch_invite_code_admin_login(
+    conn: &mut DbConn,
     _username: &str,
     _password: &str,
 ) -> Option<InviteCodeAdmin> {
     use crate::schema::invite_code_admin::dsl::invite_code_admin;
     use crate::schema::invite_code_admin::username;
-    let results = invite_code_admin
-        .filter(username.eq(_username))
-        .select(InviteCodeAdmin::as_select())
-        .load(conn)
-        .expect("DB Exception");
+
+    let results = conn
+        .0
+        .get()
+        .await
+        .expect("Db exception")
+        .interact(move |conn| {
+            invite_code_admin
+                .filter(username.eq(_username))
+                .select(InviteCodeAdmin::as_select())
+                .load(conn)
+                .expect("DB Exception")
+        })
+        .await
+        .expect("Db exception");
+
     if results.is_empty() {
         None
     } else {
