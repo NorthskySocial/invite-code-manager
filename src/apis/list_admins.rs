@@ -1,7 +1,9 @@
-use crate::apis::{DBPool, invite_code_admin_to_response};
+use crate::DbConn;
+use crate::apis::invite_code_admin_to_response;
 use crate::error::AppError;
 use crate::user::{InviteCodeAdmin, InviteCodeAdminData};
-use axum::{Json, extract::State, response::IntoResponse};
+use axum::extract::State;
+use axum::{Json, response::IntoResponse};
 use diesel::{QueryDsl, RunQueryDsl, SelectableHelper};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -25,20 +27,27 @@ pub struct ListAdminsResponse {
     )
 )]
 pub async fn list_admins_handler(
-    State(db_pool): State<DBPool>,
-    _user: InviteCodeAdmin, // Requires authentication
+    _user: InviteCodeAdmin,
+    State(db_pool): State<DbConn>,
 ) -> Result<impl IntoResponse, AppError> {
     tracing::info!("Listing all admin users");
 
-    let mut conn = db_pool
+    let conn = db_pool
+        .0
         .get()
+        .await
         .map_err(|e| AppError::DatabaseError(e.to_string()))?;
 
     use crate::schema::invite_code_admin::dsl::invite_code_admin;
 
-    let results = invite_code_admin
-        .select(InviteCodeAdmin::as_select())
-        .load::<InviteCodeAdmin>(&mut conn)
+    let results = conn
+        .interact(move |conn| {
+            invite_code_admin
+                .select(InviteCodeAdmin::as_select())
+                .load::<InviteCodeAdmin>(conn)
+        })
+        .await
+        .map_err(|e| AppError::DatabaseError(e.to_string()))?
         .map_err(|e| AppError::DatabaseError(e.to_string()))?;
 
     let admins_data: Vec<InviteCodeAdminData> =
@@ -62,34 +71,36 @@ mod tests {
         routing::get,
     };
     use diesel::RunQueryDsl;
-    use diesel::SqliteConnection;
-    use diesel::r2d2::{ConnectionManager, Pool};
     use tower::ServiceExt;
 
-    type TestDBPool = Pool<ConnectionManager<SqliteConnection>>;
+    type TestDBPool = deadpool_diesel::sqlite::Pool;
 
-    fn setup_test_db(db_name: &str) -> TestDBPool {
-        let manager = ConnectionManager::<SqliteConnection>::new(format!(
-            "file:{}?mode=memory&cache=shared",
-            db_name
-        ));
-        let pool = Pool::builder()
-            .build(manager)
+    async fn setup_test_db(db_name: &str) -> TestDBPool {
+        let manager = deadpool_diesel::sqlite::Manager::new(
+            format!("file:{}?mode=memory&cache=shared", db_name),
+            deadpool_diesel::Runtime::Tokio1,
+        );
+        let pool = deadpool_diesel::sqlite::Pool::builder(manager)
+            .build()
             .expect("Failed to create test pool");
 
-        let mut conn = pool.get().expect("Failed to get connection");
-        diesel::sql_query(
-            "CREATE TABLE invite_code_admin (
-                rowid INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT NOT NULL UNIQUE,
-                password TEXT NOT NULL,
-                otp_base32 TEXT,
-                otp_auth_url TEXT,
-                otp_enabled INTEGER NOT NULL DEFAULT 0,
-                otp_verified INTEGER NOT NULL DEFAULT 0
-            );",
-        )
-        .execute(&mut conn)
+        let conn = pool.get().await.expect("Failed to get connection");
+        conn.interact(|conn| {
+            diesel::sql_query(
+                "CREATE TABLE invite_code_admin (
+                        rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+                        username TEXT NOT NULL UNIQUE,
+                        password TEXT NOT NULL,
+                        otp_base32 TEXT,
+                        otp_auth_url TEXT,
+                        otp_enabled INTEGER NOT NULL DEFAULT 0,
+                        otp_verified INTEGER NOT NULL DEFAULT 0
+                    );",
+            )
+            .execute(conn)
+        })
+        .await
+        .expect("Interact error")
         .expect("Failed to create test table");
 
         pool
@@ -97,11 +108,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_admins_handler_unauthorized() {
-        let pool = setup_test_db("list_admins_unauth");
+        let pool = setup_test_db("list_admins_unauth").await;
 
         let app = Router::new()
             .route("/admins", get(list_admins_handler))
-            .with_state(pool.clone())
+            .with_state(crate::DbConn(pool.clone()))
             .layer(tower_sessions::SessionManagerLayer::new(
                 tower_sessions::MemoryStore::default(),
             ));

@@ -1,6 +1,5 @@
-use crate::apis::DBPool;
 use crate::db::fetch_invite_code_admin;
-use crate::error::AppError;
+use crate::{DbConn, error::AppError};
 use axum::async_trait;
 use axum::extract::{FromRef, FromRequestParts};
 use axum::http::request::Parts;
@@ -25,7 +24,7 @@ pub struct InviteCodeAdmin {
 #[async_trait]
 impl<S> FromRequestParts<S> for InviteCodeAdmin
 where
-    DBPool: FromRef<S>,
+    DbConn: FromRef<S>,
     S: Send + Sync,
 {
     type Rejection = AppError;
@@ -41,12 +40,10 @@ where
             .map_err(|e| AppError::InternalError(format!("Session error: {:?}", e)))?
             .ok_or_else(|| AppError::AuthError("Not logged in".to_string()))?;
 
-        let db_pool = DBPool::from_ref(state);
-        let mut conn = db_pool
-            .get()
-            .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+        let db_pool = DbConn::from_ref(state);
 
-        let admin = fetch_invite_code_admin(&mut conn, &username)
+        let admin = fetch_invite_code_admin(&db_pool, &username)
+            .await
             .ok_or_else(|| AppError::AuthError("User not found".to_string()))?;
 
         if admin.otp_verified == 1 {

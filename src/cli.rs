@@ -1,7 +1,7 @@
-use crate::db::{DBPooledConnection, fetch_invite_code_admin};
 use crate::schema::invite_code_admin::dsl::invite_code_admin;
 use crate::user::InviteCodeAdmin;
 use argon2::Config;
+use diesel::SqliteConnection;
 use diesel::{QueryDsl, RunQueryDsl, SelectableHelper};
 use rpassword::read_password;
 use std::env;
@@ -10,7 +10,7 @@ use std::io::{self, Write};
 
 /// Creates a new admin user interactively via CLI
 #[tracing::instrument(skip(conn))]
-pub fn create_user(conn: &mut DBPooledConnection) -> Result<(), Box<dyn Error>> {
+pub fn create_user(conn: &mut SqliteConnection) -> Result<(), Box<dyn Error>> {
     tracing::info!("Creating a new admin user...");
 
     // Get username
@@ -21,7 +21,7 @@ pub fn create_user(conn: &mut DBPooledConnection) -> Result<(), Box<dyn Error>> 
     let username = username.trim();
 
     // Check if username already exists
-    if fetch_invite_code_admin(conn, username).is_some() {
+    if crate::db::fetch_invite_code_admin_sync(conn, username).is_some() {
         return Err(format!("User with username '{}' already exists", username).into());
     }
 
@@ -63,7 +63,7 @@ pub fn create_user(conn: &mut DBPooledConnection) -> Result<(), Box<dyn Error>> 
 
 /// Lists all admin users
 #[tracing::instrument(skip(conn))]
-pub fn list_users(conn: &mut DBPooledConnection) -> Result<(), Box<dyn Error>> {
+pub fn list_users(conn: &mut SqliteConnection) -> Result<(), Box<dyn Error>> {
     tracing::info!("Listing all admin users...");
 
     let users = invite_code_admin

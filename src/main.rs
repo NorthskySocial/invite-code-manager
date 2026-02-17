@@ -4,18 +4,17 @@ use axum::{
     Router,
     routing::{get, post},
 };
-use diesel::SqliteConnection;
-use diesel::r2d2::{ConnectionManager, Pool};
 use dotenvy::dotenv;
 use invite_code_manager::apis::{
     add_admin_handler, create_invite_codes_handler, disable_invite_codes_handler,
     generate_otp_handler, get_invite_codes_handler, healthcheck_handler, list_admins_handler,
     login_user, remove_admin_handler, validate_otp_handler, verify_otp_handler,
 };
-use invite_code_manager::cli;
 use invite_code_manager::config::Config;
-use invite_code_manager::db::DBPool;
-use std::{env, io};
+use invite_code_manager::state::AppState;
+use invite_code_manager::{DbConn, cli};
+use std::env;
+use std::net::SocketAddr;
 use tower_http::cors::{Any, CorsLayer};
 use tower_sessions::{MemoryStore, SessionManagerLayer};
 use utoipa::OpenApi;
@@ -77,16 +76,8 @@ impl utoipa::Modify for SecurityAddon {
     }
 }
 
-fn init_db(database_url: &str, db_min_idle: &str) -> Pool<ConnectionManager<SqliteConnection>> {
-    let manager = ConnectionManager::<SqliteConnection>::new(database_url);
-    Pool::builder()
-        .min_idle(Some(db_min_idle.parse().unwrap()))
-        .build(manager)
-        .expect("Failed to create pool")
-}
-
 #[tokio::main]
-async fn main() -> io::Result<()> {
+async fn main() {
     dotenv().ok();
     env_logger::init();
 
@@ -95,38 +86,57 @@ async fn main() -> io::Result<()> {
         env::var("PDS_ADMIN_PASSWORD").expect("env variable PDS_ADMIN_PASSWORD should be set");
     let pds_endpoint = env::var("PDS_ENDPOINT").expect("env variable PDS_ENDPOINT should be set");
     let database_url = env::var("DATABASE_URL").expect("env variable DATABASE_URL should be set");
-    let db_min_idle = env::var("DB_MIN_IDLE").unwrap_or("1".to_string());
-    let server_port = env::var("SERVER_PORT").unwrap_or("9090".to_string());
+    let db_min_idle = env::var("DB_MIN_IDLE")
+        .unwrap_or(1.to_string())
+        .parse::<usize>()
+        .unwrap();
+    let server_port = env::var("SERVER_PORT")
+        .unwrap_or("9090".to_string())
+        .parse::<u16>()
+        .expect("SERVER_PORT must be a valid u16");
 
-    let db_manager =
-        deadpool_diesel::sqlite::Manager::new(database_url, deadpool_diesel::Runtime::Tokio1);
-
-    // Create DB Pool
-    let db_pool = init_db(database_url.as_str(), db_min_idle.as_str());
+    let db_manager = deadpool_diesel::sqlite::Manager::new(
+        database_url.clone(),
+        deadpool_diesel::Runtime::Tokio1,
+    );
+    let db_pool_obj = deadpool_diesel::sqlite::Pool::builder(db_manager)
+        .max_size(db_min_idle)
+        .build()
+        .unwrap();
+    let db_pool = DbConn(db_pool_obj);
 
     // Check for CLI commands (if none are provided, start the server instead)
     let args: Vec<String> = env::args().collect();
     if args.len() > 1 {
-        return match args[1].as_str() {
+        match args[1].as_str() {
             "create-user" => {
-                let mut conn = db_pool.get().expect("Failed to get DB connection");
-                if let Err(e) = cli::create_user(&mut conn) {
-                    tracing::error!("Error creating user: {}", e);
-                }
-                Ok(())
+                let conn_obj = db_pool.0.get().await.expect("Failed to get DB connection");
+                conn_obj
+                    .interact(|conn| {
+                        if let Err(e) = cli::create_user(conn) {
+                            tracing::error!("Error creating user: {}", e);
+                        }
+                    })
+                    .await
+                    .expect("Interact error");
+                return;
             }
             "list-users" => {
-                let mut conn = db_pool.get().expect("Failed to get DB connection");
-                if let Err(e) = cli::list_users(&mut conn) {
-                    tracing::error!("Error listing users: {}", e);
-                }
-                Ok(())
+                let conn_obj = db_pool.0.get().await.expect("Failed to get DB connection");
+                conn_obj
+                    .interact(|conn| {
+                        if let Err(e) = cli::list_users(conn) {
+                            tracing::error!("Error listing users: {}", e);
+                        }
+                    })
+                    .await
+                    .expect("Interact error");
+                return;
             }
             _ => {
                 tracing::info!("Unknown command: {}", args[1]);
-                Ok(())
             }
-        };
+        }
     }
 
     // Setup Config
@@ -155,29 +165,11 @@ async fn main() -> io::Result<()> {
             .allow_headers(Any)
     };
 
-    #[derive(Clone)]
-    struct AppState {
-        db_pool: DBPool,
-        config: Config,
-    }
-
-    impl axum::extract::FromRef<AppState> for DBPool {
-        fn from_ref(state: &AppState) -> DBPool {
-            state.db_pool.clone()
-        }
-    }
-
-    impl axum::extract::FromRef<AppState> for Config {
-        fn from_ref(state: &AppState) -> Config {
-            state.config.clone()
-        }
-    }
-
     let session_store = MemoryStore::default();
     let session_layer = SessionManagerLayer::new(session_store);
 
     let app_state = AppState {
-        db_pool: db_manager,
+        db_pool: db_pool.clone(),
         config: config.clone(),
     };
 
@@ -200,10 +192,8 @@ async fn main() -> io::Result<()> {
 
     let app = app.layer(session_layer).layer(cors);
 
-    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", server_port))
-        .await
-        .expect("Failed to bind");
-    axum::serve(listener, app).await.expect("server error");
-
-    Ok(())
+    let addr = SocketAddr::from(([0, 0, 0, 0], server_port));
+    tracing::info!("listening on {}", addr);
+    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+    axum::serve(listener, app).await.unwrap();
 }

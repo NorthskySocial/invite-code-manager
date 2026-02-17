@@ -1,6 +1,4 @@
 use crate::user::{InviteCodeAdmin, InviteCodeAdminData};
-use diesel::SqliteConnection;
-use diesel::r2d2::{ConnectionManager, Pool};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -28,7 +26,8 @@ pub use remove_admin::*;
 pub use validate_otp::*;
 pub use verify_otp::*;
 
-pub type DBPool = Pool<ConnectionManager<SqliteConnection>>;
+pub use crate::DbConn;
+pub type DBPool = DbConn;
 
 #[derive(Deserialize, Serialize, Clone, Debug, ToSchema)]
 pub struct Use {

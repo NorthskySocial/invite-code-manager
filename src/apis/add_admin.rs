@@ -1,4 +1,4 @@
-use crate::apis::DBPool;
+use crate::DbConn;
 use crate::db::create_invite_code_admin;
 use crate::error::AppError;
 use crate::user::InviteCodeAdmin;
@@ -41,7 +41,7 @@ fn validate_add_admin_request(body: &AddAdminRequest) -> Result<(), AppError> {
     )
 )]
 pub async fn add_admin_handler(
-    State(db_pool): State<DBPool>,
+    State(db_pool): State<DbConn>,
     _user: InviteCodeAdmin,
     Json(body): Json<AddAdminRequest>,
 ) -> Result<impl IntoResponse, AppError> {
@@ -54,10 +54,9 @@ pub async fn add_admin_handler(
     let password: String =
         rand::distr::SampleString::sample_string(&rand::distr::Alphanumeric, &mut rand::rng(), 24);
 
-    let mut conn = db_pool
-        .get()
-        .map_err(|e| AppError::DatabaseError(e.to_string()))?;
-    match create_invite_code_admin(&mut conn, body.username.as_str(), password.as_str()) {
+    let username = body.username.clone();
+    let password_clone = password.clone();
+    match create_invite_code_admin(&db_pool, username.as_str(), password_clone.as_str()).await {
         Ok(_) => {
             let response = AddAdminResponse {
                 status: "success".to_string(),
@@ -90,34 +89,36 @@ mod tests {
         routing::post,
     };
     use diesel::RunQueryDsl;
-    use diesel::SqliteConnection;
-    use diesel::r2d2::{ConnectionManager, Pool};
     use tower::ServiceExt;
 
-    type TestDBPool = Pool<ConnectionManager<SqliteConnection>>;
+    type TestDBPool = deadpool_diesel::sqlite::Pool;
 
-    fn setup_test_db(db_name: &str) -> TestDBPool {
-        let manager = ConnectionManager::<SqliteConnection>::new(format!(
-            "file:{}?mode=memory&cache=shared",
-            db_name
-        ));
-        let pool = Pool::builder()
-            .build(manager)
+    async fn setup_test_db(db_name: &str) -> TestDBPool {
+        let manager = deadpool_diesel::sqlite::Manager::new(
+            format!("file:{}?mode=memory&cache=shared", db_name),
+            deadpool_diesel::Runtime::Tokio1,
+        );
+        let pool = deadpool_diesel::sqlite::Pool::builder(manager)
+            .build()
             .expect("Failed to create test pool");
 
-        let mut conn = pool.get().expect("Failed to get connection");
-        diesel::sql_query(
-            "CREATE TABLE invite_code_admin (
-                rowid INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT NOT NULL UNIQUE,
-                password TEXT NOT NULL,
-                otp_base32 TEXT,
-                otp_auth_url TEXT,
-                otp_enabled INTEGER NOT NULL DEFAULT 0,
-                otp_verified INTEGER NOT NULL DEFAULT 0
-            );",
-        )
-        .execute(&mut conn)
+        let conn = pool.get().await.expect("Failed to get connection");
+        conn.interact(|conn| {
+            diesel::sql_query(
+                "CREATE TABLE invite_code_admin (
+                        rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+                        username TEXT NOT NULL UNIQUE,
+                        password TEXT NOT NULL,
+                        otp_base32 TEXT,
+                        otp_auth_url TEXT,
+                        otp_enabled INTEGER NOT NULL DEFAULT 0,
+                        otp_verified INTEGER NOT NULL DEFAULT 0
+                    );",
+            )
+            .execute(conn)
+        })
+        .await
+        .expect("Interact error")
         .expect("Failed to create test table");
 
         pool
@@ -125,11 +126,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_admin_handler_unauthorized() {
-        let pool = setup_test_db("add_admin_unauth");
+        let pool = setup_test_db("add_admin_unauth").await;
 
         let app = Router::new()
             .route("/admins", post(add_admin_handler))
-            .with_state(pool.clone())
+            .with_state(crate::DbConn(pool.clone()))
             .layer(tower_sessions::SessionManagerLayer::new(
                 tower_sessions::MemoryStore::default(),
             ));

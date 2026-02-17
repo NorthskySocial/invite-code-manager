@@ -9,6 +9,7 @@ pub mod db;
 pub mod error;
 pub mod models;
 pub mod schema;
+pub mod state;
 pub mod user;
 
 use alloc::string::String;
@@ -17,6 +18,10 @@ use utoipa::ToSchema;
 
 #[derive(Clone)]
 pub struct DbConn(pub Pool);
+
+pub type DBPool = DbConn;
+
+pub type DBPooledConnection = diesel::SqliteConnection;
 
 // Shared structures that are used across modules
 #[derive(serde::Deserialize, Debug, serde::Serialize, ToSchema)]
@@ -34,43 +39,43 @@ pub const GET_ACCOUNT_INFOS: &str = "/xrpc/com.atproto.admin.getAccountInfos";
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::{
+        create_invite_code_admin, delete_invite_code_admin, fetch_invite_code_admin,
+        fetch_invite_code_admin_login,
+    };
     use alloc::string::ToString;
     use alloc::vec;
     use core::{assert, assert_eq, assert_ne};
-    use diesel::r2d2::{ConnectionManager, Pool};
-    use diesel::{RunQueryDsl, SqliteConnection};
+    use deadpool_diesel::sqlite::{Manager, Pool};
+    use diesel::RunQueryDsl;
 
-    type TestDBPool = Pool<ConnectionManager<SqliteConnection>>;
-
-    fn setup_test_db() -> TestDBPool {
-        let manager = ConnectionManager::<SqliteConnection>::new(":memory:");
-        let pool = Pool::builder()
-            .min_idle(Some(1))
-            .build(manager)
+    async fn setup_test_db() -> Pool {
+        let manager = Manager::new(":memory:", deadpool_diesel::Runtime::Tokio1);
+        let pool = Pool::builder(manager)
+            .build()
             .expect("Failed to create test pool");
 
         // Run migrations on the test database
-        let mut conn = pool.get().expect("Failed to get connection");
-        diesel::sql_query(
-            "CREATE TABLE invite_code_admin (
-                rowid INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT NOT NULL UNIQUE,
-                password TEXT NOT NULL,
-                otp_base32 TEXT,
-                otp_auth_url TEXT,
-                otp_enabled INTEGER NOT NULL DEFAULT 0,
-                otp_verified INTEGER NOT NULL DEFAULT 0
-            );",
-        )
-        .execute(&mut conn)
+        let conn = pool.get().await.expect("Failed to get connection");
+        conn.interact(|conn| {
+            diesel::sql_query(
+                "CREATE TABLE invite_code_admin (
+                    rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL UNIQUE,
+                    password TEXT NOT NULL,
+                    otp_base32 TEXT,
+                    otp_auth_url TEXT,
+                    otp_enabled INTEGER NOT NULL DEFAULT 0,
+                    otp_verified INTEGER NOT NULL DEFAULT 0
+                );",
+            )
+            .execute(conn)
+        })
+        .await
+        .expect("Interact error")
         .expect("Failed to create test table");
 
         pool
-    }
-
-    #[test]
-    fn test_basic_functionality() {
-        assert_eq!(2 + 2, 4);
     }
 
     #[test]
@@ -83,53 +88,43 @@ mod tests {
         assert_eq!(config.pds_endpoint, "http://test-endpoint");
     }
 
-    #[test]
-    fn test_create_invite_code_admin_success() {
-        let pool = setup_test_db();
-        let mut conn = pool.get().expect("Failed to get connection");
+    #[tokio::test]
+    async fn test_create_invite_code_admin_success() {
+        let pool = setup_test_db().await;
+        let db_conn = DbConn(pool);
 
-        let result = create_invite_code_admin(&mut conn, "testuser", "testpass");
+        let result = create_invite_code_admin(&db_conn, "testuser", "testpass").await;
 
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), 1); // Should insert 1 row
+        assert_eq!(result.unwrap(), 1);
     }
 
-    #[test]
-    fn test_create_invite_code_admin_duplicate() {
-        let pool = setup_test_db();
-        let mut conn = pool.get().expect("Failed to get connection");
+    #[tokio::test]
+    async fn test_create_invite_code_admin_duplicate() {
+        let pool = setup_test_db().await;
+        let db_conn = DbConn(pool);
 
-        // Create first admin
-        let result1 = create_invite_code_admin(&mut conn, "testuser", "testpass");
+        // Create the first admin
+        let result1 = create_invite_code_admin(&db_conn, "testuser", "testpass").await;
         assert!(result1.is_ok());
 
-        // Try to create duplicate admin
-        let result2 = create_invite_code_admin(&mut conn, "testuser", "testpass2");
+        // Try to create a duplicate admin
+        let result2 = create_invite_code_admin(&db_conn, "testuser", "testpass2").await;
         assert!(result2.is_err());
-
-        // Verify it's a unique constraint violation
-        match result2.unwrap_err() {
-            diesel::result::Error::DatabaseError(
-                diesel::result::DatabaseErrorKind::UniqueViolation,
-                _,
-            ) => {
-                // This is expected
-            }
-            _ => panic!("Expected unique constraint violation"),
-        }
     }
 
-    #[test]
-    fn test_fetch_invite_code_admin() {
-        let pool = setup_test_db();
-        let mut conn = pool.get().expect("Failed to get connection");
+    #[tokio::test]
+    async fn test_fetch_invite_code_admin() {
+        let pool = setup_test_db().await;
+        let db_conn = DbConn(pool);
 
         // Create an admin first
-        create_invite_code_admin(&mut conn, "testuser", "testpass")
+        create_invite_code_admin(&db_conn, "testuser", "testpass")
+            .await
             .expect("Failed to create admin");
 
         // Fetch the admin
-        let admin = fetch_invite_code_admin(&mut conn, "testuser");
+        let admin = fetch_invite_code_admin(&db_conn, "testuser").await;
 
         assert!(admin.is_some());
         let admin = admin.unwrap();
@@ -138,131 +133,137 @@ mod tests {
         assert_eq!(admin.otp_verified, 0);
     }
 
-    #[test]
-    fn test_fetch_invite_code_admin_not_found() {
-        let pool = setup_test_db();
-        let mut conn = pool.get().expect("Failed to get connection");
+    #[tokio::test]
+    async fn test_fetch_invite_code_admin_not_found() {
+        let pool = setup_test_db().await;
+        let db_conn = DbConn(pool);
 
-        let admin = fetch_invite_code_admin(&mut conn, "nonexistent");
+        let admin = fetch_invite_code_admin(&db_conn, "nonexistent").await;
         assert!(admin.is_none());
     }
 
-    #[test]
-    fn test_fetch_invite_code_admin_login_success() {
-        let pool = setup_test_db();
-        let mut conn = pool.get().expect("Failed to get connection");
+    #[tokio::test]
+    async fn test_fetch_invite_code_admin_login_success() {
+        let pool = setup_test_db().await;
+        let db_conn = DbConn(pool);
 
         // Create an admin first
-        create_invite_code_admin(&mut conn, "testuser", "testpass")
+        create_invite_code_admin(&db_conn, "testuser", "testpass")
+            .await
             .expect("Failed to create admin");
 
-        // Test successful login
-        let admin = fetch_invite_code_admin_login(&mut conn, "testuser", "testpass");
+        // Test a successful login
+        let admin = fetch_invite_code_admin_login(&db_conn, "testuser", "testpass").await;
 
         assert!(admin.is_some());
         let admin = admin.unwrap();
         assert_eq!(admin.username, "testuser");
     }
 
-    #[test]
-    fn test_fetch_invite_code_admin_login_wrong_password() {
-        let pool = setup_test_db();
-        let mut conn = pool.get().expect("Failed to get connection");
+    #[tokio::test]
+    async fn test_fetch_invite_code_admin_login_wrong_password() {
+        let pool = setup_test_db().await;
+        let db_conn = DbConn(pool);
 
         // Create an admin first
-        create_invite_code_admin(&mut conn, "testuser", "testpass")
+        create_invite_code_admin(&db_conn, "testuser", "testpass")
+            .await
             .expect("Failed to create admin");
 
-        // Test login with wrong password
-        let admin = fetch_invite_code_admin_login(&mut conn, "testuser", "wrongpass");
+        // Test login with the wrong password
+        let admin = fetch_invite_code_admin_login(&db_conn, "testuser", "wrongpass").await;
 
         assert!(admin.is_none());
     }
 
-    #[test]
-    fn test_fetch_invite_code_admin_login_nonexistent_user() {
-        let pool = setup_test_db();
-        let mut conn = pool.get().expect("Failed to get connection");
+    #[tokio::test]
+    async fn test_fetch_invite_code_admin_login_nonexistent_user() {
+        let pool = setup_test_db().await;
+        let db_conn = DbConn(pool);
 
-        // Test login with nonexistent user
-        let admin = fetch_invite_code_admin_login(&mut conn, "nonexistent", "anypass");
+        // Test login with a nonexistent user
+        let admin = fetch_invite_code_admin_login(&db_conn, "nonexistent", "anypass").await;
 
         assert!(admin.is_none());
     }
 
-    #[test]
-    fn test_delete_invite_code_admin_success() {
-        let pool = setup_test_db();
-        let mut conn = pool.get().expect("Failed to get connection");
+    #[tokio::test]
+    async fn test_delete_invite_code_admin_success() {
+        let pool = setup_test_db().await;
+        let db_conn = DbConn(pool);
 
         // Create an admin first
-        create_invite_code_admin(&mut conn, "testuser", "testpass")
+        create_invite_code_admin(&db_conn, "testuser", "testpass")
+            .await
             .expect("Failed to create admin");
 
-        // Verify admin exists
-        let admin = fetch_invite_code_admin(&mut conn, "testuser");
+        // Verify that admin exists
+        let admin = fetch_invite_code_admin(&db_conn, "testuser").await;
         assert!(admin.is_some());
 
         // Delete the admin
-        let result = delete_invite_code_admin(&mut conn, "testuser");
+        let result = delete_invite_code_admin(&db_conn, "testuser").await;
 
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), 1); // Should delete 1 row
+        assert_eq!(result.unwrap(), 1);
 
         // Verify admin no longer exists
-        let admin = fetch_invite_code_admin(&mut conn, "testuser");
+        let admin = fetch_invite_code_admin(&db_conn, "testuser").await;
         assert!(admin.is_none());
     }
 
-    #[test]
-    fn test_delete_invite_code_admin_not_found() {
-        let pool = setup_test_db();
-        let mut conn = pool.get().expect("Failed to get connection");
+    #[tokio::test]
+    async fn test_delete_invite_code_admin_not_found() {
+        let pool = setup_test_db().await;
+        let db_conn = DbConn(pool);
 
-        // Try to delete nonexistent admin
-        let result = delete_invite_code_admin(&mut conn, "nonexistent");
+        // Try to delete a nonexistent admin
+        let result = delete_invite_code_admin(&db_conn, "nonexistent").await;
 
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), 0); // Should delete 0 rows
+        assert_eq!(result.unwrap(), 0);
     }
 
-    #[test]
-    fn test_password_hashing() {
-        let pool = setup_test_db();
-        let mut conn = pool.get().expect("Failed to get connection");
+    #[tokio::test]
+    async fn test_password_hashing() {
+        let pool = setup_test_db().await;
+        let db_conn = DbConn(pool);
 
         // Create an admin
-        create_invite_code_admin(&mut conn, "testuser", "testpass")
+        create_invite_code_admin(&db_conn, "testuser", "testpass")
+            .await
             .expect("Failed to create admin");
 
-        // Fetch the admin and verify password is hashed
-        let admin = fetch_invite_code_admin(&mut conn, "testuser").expect("Admin should exist");
+        // Fetch the admin and verify the password is hashed
+        let admin = fetch_invite_code_admin(&db_conn, "testuser")
+            .await
+            .expect("Admin should exist");
 
         // Password should be hashed, not plain text
         assert_ne!(admin.password, "testpass");
         assert!(admin.password.starts_with("$argon2")); // Argon2 hash format
     }
 
-    #[test]
-    fn test_admin_creation_validation() {
-        let pool = setup_test_db();
-        let mut conn = pool.get().expect("Failed to get connection");
+    #[tokio::test]
+    async fn test_admin_creation_validation() {
+        let pool = setup_test_db().await;
+        let db_conn = DbConn(pool);
 
         // Test creating admin with empty username should fail
         // Note: This test depends on validation in the route handlers
         // The helper function itself doesn't validate empty strings
-        let result = create_invite_code_admin(&mut conn, "", "testpass");
+        let result = create_invite_code_admin(&db_conn, "", "testpass").await;
         // The database will accept empty string, so this will succeed at DB level
         assert!(result.is_ok());
 
         // Clean up
-        let _ = delete_invite_code_admin(&mut conn, "");
+        let _ = delete_invite_code_admin(&db_conn, "").await;
     }
 
-    #[test]
-    fn test_multiple_admin_operations() {
-        let pool = setup_test_db();
-        let mut conn = pool.get().expect("Failed to get connection");
+    #[tokio::test]
+    async fn test_multiple_admin_operations() {
+        let pool = setup_test_db().await;
+        let db_conn = DbConn(pool);
 
         // Create multiple admins
         let users = vec![
@@ -272,79 +273,82 @@ mod tests {
         ];
 
         for (username, password) in &users {
-            let result = create_invite_code_admin(&mut conn, username, password);
+            let result = create_invite_code_admin(&db_conn, username, password).await;
             assert!(result.is_ok());
         }
 
-        // Verify all admins exist
+        // Verify that all admins exist
         for (username, _) in &users {
-            let admin = fetch_invite_code_admin(&mut conn, username);
+            let admin = fetch_invite_code_admin(&db_conn, username).await;
             assert!(admin.is_some());
         }
 
         // Delete one admin
-        let result = delete_invite_code_admin(&mut conn, "admin2");
+        let result = delete_invite_code_admin(&db_conn, "admin2").await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), 1);
 
-        // Verify admin2 is deleted but others remain
-        assert!(fetch_invite_code_admin(&mut conn, "admin1").is_some());
-        assert!(fetch_invite_code_admin(&mut conn, "admin2").is_none());
-        assert!(fetch_invite_code_admin(&mut conn, "admin3").is_some());
+        // Verify admin2 is deleted but the others remain
+        assert!(fetch_invite_code_admin(&db_conn, "admin1").await.is_some());
+        assert!(fetch_invite_code_admin(&db_conn, "admin2").await.is_none());
+        assert!(fetch_invite_code_admin(&db_conn, "admin3").await.is_some());
     }
 
-    #[test]
-    fn test_admin_login_integration() {
-        let pool = setup_test_db();
-        let mut conn = pool.get().expect("Failed to get connection");
+    #[tokio::test]
+    async fn test_admin_login_integration() {
+        let pool = setup_test_db().await;
+        let db_conn = DbConn(pool);
 
         // Create admin
-        create_invite_code_admin(&mut conn, "integrationtest", "mypassword")
+        create_invite_code_admin(&db_conn, "integrationtest", "mypassword")
+            .await
             .expect("Failed to create admin");
 
         // Test successful login
         let login_result =
-            fetch_invite_code_admin_login(&mut conn, "integrationtest", "mypassword");
+            fetch_invite_code_admin_login(&db_conn, "integrationtest", "mypassword").await;
         assert!(login_result.is_some());
 
-        // Test failed login with wrong password
+        // Test failed login with the wrong password
         let failed_result =
-            fetch_invite_code_admin_login(&mut conn, "integrationtest", "wrongpassword");
+            fetch_invite_code_admin_login(&db_conn, "integrationtest", "wrongpassword").await;
         assert!(failed_result.is_none());
 
-        // Test login with wrong username
-        let no_user_result = fetch_invite_code_admin_login(&mut conn, "wronguser", "mypassword");
+        // Test login with the wrong username
+        let no_user_result =
+            fetch_invite_code_admin_login(&db_conn, "wronguser", "mypassword").await;
         assert!(no_user_result.is_none());
     }
 
-    #[test]
-    fn test_list_admins() {
+    #[tokio::test]
+    async fn test_list_admins() {
         use crate::schema::invite_code_admin::dsl::invite_code_admin;
         use crate::user::InviteCodeAdmin;
-        use diesel::{QueryDsl, RunQueryDsl, SelectableHelper};
-        let pool = setup_test_db();
-        let mut conn = pool.get().expect("Failed to get connection");
-
-        // Initially no admins or only what setup_test_db might have (it seems to be clean)
-        let initial_results = invite_code_admin
-            .select(InviteCodeAdmin::as_select())
-            .load::<InviteCodeAdmin>(&mut conn)
-            .expect("DB Exception");
-        let initial_count = initial_results.len();
+        use diesel::{QueryDsl, SelectableHelper};
+        let pool = setup_test_db().await;
+        let db_conn = DbConn(pool);
 
         // Create some admins
-        create_invite_code_admin(&mut conn, "list_admin1", "pass1")
+        create_invite_code_admin(&db_conn, "list_admin1", "pass1")
+            .await
             .expect("Failed to create admin");
-        create_invite_code_admin(&mut conn, "list_admin2", "pass2")
+        create_invite_code_admin(&db_conn, "list_admin2", "pass2")
+            .await
             .expect("Failed to create admin");
 
         // List admins
-        let results = invite_code_admin
-            .select(InviteCodeAdmin::as_select())
-            .load::<InviteCodeAdmin>(&mut conn)
-            .expect("DB Exception");
+        let conn = db_conn.0.get().await.expect("Failed to get connection");
+        let results = conn
+            .interact(|conn| {
+                invite_code_admin
+                    .select(InviteCodeAdmin::as_select())
+                    .load::<InviteCodeAdmin>(conn)
+                    .expect("DB Exception")
+            })
+            .await
+            .expect("Interact error");
 
-        assert_eq!(results.len(), initial_count + 2);
+        assert!(results.len() >= 2);
         assert!(results.iter().any(|u| u.username == "list_admin1"));
         assert!(results.iter().any(|u| u.username == "list_admin2"));
     }

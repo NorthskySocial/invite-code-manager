@@ -1,4 +1,5 @@
-use crate::apis::{DBPool, invite_code_admin_to_response};
+use crate::DbConn;
+use crate::apis::invite_code_admin_to_response;
 use crate::db::verify_otp;
 use crate::error::AppError;
 use crate::user::{InviteCodeAdmin, InviteCodeAdminData, VerifyOTPSchema};
@@ -29,7 +30,7 @@ pub struct VerifyOTPResponse {
     )
 )]
 pub async fn verify_otp_handler(
-    State(db_pool): State<DBPool>,
+    State(db_pool): State<DbConn>,
     session: Session,
     invite_code_admin: InviteCodeAdmin,
     Json(body): Json<VerifyOTPSchema>,
@@ -58,10 +59,9 @@ pub async fn verify_otp_handler(
         return Err(AppError::AuthError("Token is invalid".to_string()));
     }
 
-    let mut conn = db_pool
-        .get()
-        .map_err(|e| AppError::DatabaseError(e.to_string()))?;
-    verify_otp(&mut conn, invite_code_admin.username.as_str());
+    let username = invite_code_admin.username.clone();
+
+    verify_otp(&db_pool, username.as_str()).await;
 
     session
         .insert("otp_validated", "y")
@@ -84,34 +84,36 @@ mod tests {
         routing::post,
     };
     use diesel::RunQueryDsl;
-    use diesel::SqliteConnection;
-    use diesel::r2d2::{ConnectionManager, Pool};
     use tower::ServiceExt;
 
-    type TestDBPool = Pool<ConnectionManager<SqliteConnection>>;
+    type TestDBPool = deadpool_diesel::sqlite::Pool;
 
-    fn setup_test_db(db_name: &str) -> TestDBPool {
-        let manager = ConnectionManager::<SqliteConnection>::new(format!(
-            "file:{}?mode=memory&cache=shared",
-            db_name
-        ));
-        let pool = Pool::builder()
-            .build(manager)
+    async fn setup_test_db(db_name: &str) -> TestDBPool {
+        let manager = deadpool_diesel::sqlite::Manager::new(
+            format!("file:{}?mode=memory&cache=shared", db_name),
+            deadpool_diesel::Runtime::Tokio1,
+        );
+        let pool = deadpool_diesel::sqlite::Pool::builder(manager)
+            .build()
             .expect("Failed to create test pool");
 
-        let mut conn = pool.get().expect("Failed to get connection");
-        diesel::sql_query(
-            "CREATE TABLE invite_code_admin (
-                rowid INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT NOT NULL UNIQUE,
-                password TEXT NOT NULL,
-                otp_base32 TEXT,
-                otp_auth_url TEXT,
-                otp_enabled INTEGER NOT NULL DEFAULT 0,
-                otp_verified INTEGER NOT NULL DEFAULT 0
-            );",
-        )
-        .execute(&mut conn)
+        let conn = pool.get().await.expect("Failed to get connection");
+        conn.interact(|conn| {
+            diesel::sql_query(
+                "CREATE TABLE invite_code_admin (
+                        rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+                        username TEXT NOT NULL UNIQUE,
+                        password TEXT NOT NULL,
+                        otp_base32 TEXT,
+                        otp_auth_url TEXT,
+                        otp_enabled INTEGER NOT NULL DEFAULT 0,
+                        otp_verified INTEGER NOT NULL DEFAULT 0
+                    );",
+            )
+            .execute(conn)
+        })
+        .await
+        .expect("Interact error")
         .expect("Failed to create test table");
 
         pool
@@ -120,11 +122,11 @@ mod tests {
     #[tokio::test]
     async fn test_verify_otp_handler_unauthorized() {
         let db_name = "verify_otp_unauth";
-        let pool = setup_test_db(db_name);
+        let pool = setup_test_db(db_name).await;
 
         let app = Router::new()
             .route("/auth/otp/verify", post(verify_otp_handler))
-            .with_state(pool.clone())
+            .with_state(crate::DbConn(pool.clone()))
             .layer(tower_sessions::SessionManagerLayer::new(
                 tower_sessions::MemoryStore::default(),
             ));

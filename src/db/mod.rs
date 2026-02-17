@@ -1,26 +1,24 @@
 use crate::DbConn;
 use crate::schema::invite_code_admin::{otp_auth_url, otp_base32};
 use crate::user::InviteCodeAdmin;
-use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl, SelectableHelper};
+use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl, SelectableHelper, SqliteConnection};
 
 pub async fn fetch_invite_code_admin_login(
-    conn: &mut DbConn,
+    db: &DbConn,
     _username: &str,
     _password: &str,
 ) -> Option<InviteCodeAdmin> {
     use crate::schema::invite_code_admin::dsl::invite_code_admin;
     use crate::schema::invite_code_admin::username;
 
-    let results = conn
-        .0
-        .get()
-        .await
-        .expect("Db exception")
+    let _username = _username.to_string();
+    let conn = db.0.get().await.expect("Db exception");
+    let results: Vec<InviteCodeAdmin> = conn
         .interact(move |conn| {
             invite_code_admin
                 .filter(username.eq(_username))
                 .select(InviteCodeAdmin::as_select())
-                .load(conn)
+                .load::<InviteCodeAdmin>(conn)
                 .expect("DB Exception")
         })
         .await
@@ -38,8 +36,8 @@ pub async fn fetch_invite_code_admin_login(
     }
 }
 
-pub fn fetch_invite_code_admin(
-    conn: &mut DBPooledConnection,
+pub fn fetch_invite_code_admin_sync(
+    conn: &mut SqliteConnection,
     _username: &str,
 ) -> Option<InviteCodeAdmin> {
     use crate::schema::invite_code_admin::dsl::invite_code_admin;
@@ -47,7 +45,7 @@ pub fn fetch_invite_code_admin(
     let results = invite_code_admin
         .filter(username.eq(_username))
         .select(InviteCodeAdmin::as_select())
-        .load(conn)
+        .load::<InviteCodeAdmin>(conn)
         .expect("DB Exception");
     if results.is_empty() {
         None
@@ -56,43 +54,67 @@ pub fn fetch_invite_code_admin(
     }
 }
 
-pub fn update_otp(
-    conn: &mut DBPooledConnection,
-    _username: &str,
-    _otp_base32: &str,
-    _otp_auth_url: &str,
-) {
-    use crate::schema::invite_code_admin;
-    let _ = diesel::update(invite_code_admin::table)
-        .filter(invite_code_admin::username.eq(_username))
-        .set((
-            invite_code_admin::otp_enabled.eq(1),
-            otp_base32.eq(_otp_base32),
-            otp_auth_url.eq(_otp_auth_url),
-        ))
-        .execute(conn);
+pub async fn fetch_invite_code_admin(db: &DbConn, _username: &str) -> Option<InviteCodeAdmin> {
+    let _username = _username.to_string();
+    let conn = db.0.get().await.expect("Db exception");
+    conn.interact(move |conn| fetch_invite_code_admin_sync(conn, &_username))
+        .await
+        .expect("Db exception")
 }
 
-pub fn verify_otp(conn: &mut DBPooledConnection, _username: &str) {
+pub async fn update_otp(db: &DbConn, _username: &str, _otp_base32: &str, _otp_auth_url: &str) {
     use crate::schema::invite_code_admin;
-    let _ = diesel::update(invite_code_admin::table)
-        .filter(invite_code_admin::username.eq(_username))
-        .set((
-            invite_code_admin::otp_verified.eq(1),
-            otp_base32.eq(otp_base32),
-            otp_auth_url.eq(otp_auth_url),
-        ))
-        .execute(conn);
+    let _username = _username.to_string();
+    let _otp_base32 = _otp_base32.to_string();
+    let _otp_auth_url = _otp_auth_url.to_string();
+    let conn = db.0.get().await.expect("Db exception");
+    let _ = conn
+        .interact(move |conn| {
+            diesel::update(invite_code_admin::table)
+                .filter(invite_code_admin::username.eq(_username))
+                .set((
+                    invite_code_admin::otp_enabled.eq(1),
+                    otp_base32.eq(_otp_base32.as_str()),
+                    otp_auth_url.eq(_otp_auth_url.as_str()),
+                ))
+                .execute(conn)
+        })
+        .await;
 }
 
-pub fn create_invite_code_admin(
-    conn: &mut DBPooledConnection,
+pub async fn verify_otp(db: &DbConn, _username: &str) {
+    use crate::schema::invite_code_admin;
+    let _username = _username.to_string();
+    let conn = db.0.get().await.expect("Db exception");
+    let _ = conn
+        .interact(move |conn| {
+            diesel::update(invite_code_admin::table)
+                .filter(invite_code_admin::username.eq(_username))
+                .set((
+                    invite_code_admin::otp_verified.eq(1),
+                    otp_base32.eq(otp_base32),
+                    otp_auth_url.eq(otp_auth_url),
+                ))
+                .execute(conn)
+        })
+        .await;
+}
+
+pub fn create_invite_code_admin_sync(
+    conn: &mut SqliteConnection,
+    new_admin: &InviteCodeAdmin,
+) -> Result<usize, diesel::result::Error> {
+    use crate::schema::invite_code_admin;
+    diesel::insert_into(invite_code_admin::table)
+        .values(new_admin)
+        .execute(conn)
+}
+
+pub async fn create_invite_code_admin(
+    db: &DbConn,
     _username: &str,
     _password: &str,
 ) -> Result<usize, diesel::result::Error> {
-    use crate::schema::invite_code_admin;
-    use crate::user::InviteCodeAdmin;
-
     // Hash the password using Argon2
     let hashed_password = argon2::hash_encoded(
         _password.as_bytes(),
@@ -110,18 +132,25 @@ pub fn create_invite_code_admin(
         otp_verified: 0,
     };
 
-    diesel::insert_into(invite_code_admin::table)
-        .values(&new_admin)
-        .execute(conn)
+    let conn = db.0.get().await.expect("Db exception");
+    conn.interact(move |conn| create_invite_code_admin_sync(conn, &new_admin))
+        .await
+        .expect("Db exception")
 }
 
-pub fn delete_invite_code_admin(
-    conn: &mut DBPooledConnection,
+pub async fn delete_invite_code_admin(
+    db: &DbConn,
     _username: &str,
 ) -> Result<usize, diesel::result::Error> {
     use crate::schema::invite_code_admin;
 
-    diesel::delete(invite_code_admin::table)
-        .filter(invite_code_admin::username.eq(_username))
-        .execute(conn)
+    let _username = _username.to_string();
+    let conn = db.0.get().await.expect("Db exception");
+    conn.interact(move |conn| {
+        diesel::delete(invite_code_admin::table)
+            .filter(invite_code_admin::username.eq(_username))
+            .execute(conn)
+    })
+    .await
+    .expect("Db exception")
 }

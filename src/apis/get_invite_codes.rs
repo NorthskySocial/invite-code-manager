@@ -147,34 +147,36 @@ mod tests {
         routing::get,
     };
     use diesel::RunQueryDsl;
-    use diesel::SqliteConnection;
-    use diesel::r2d2::{ConnectionManager, Pool};
     use tower::ServiceExt;
 
-    type TestDBPool = Pool<ConnectionManager<SqliteConnection>>;
+    type TestDBPool = deadpool_diesel::sqlite::Pool;
 
-    fn setup_test_db(db_name: &str) -> TestDBPool {
-        let manager = ConnectionManager::<SqliteConnection>::new(format!(
-            "file:{}?mode=memory&cache=shared",
-            db_name
-        ));
-        let pool = Pool::builder()
-            .build(manager)
+    async fn setup_test_db(db_name: &str) -> TestDBPool {
+        let manager = deadpool_diesel::sqlite::Manager::new(
+            format!("file:{}?mode=memory&cache=shared", db_name),
+            deadpool_diesel::Runtime::Tokio1,
+        );
+        let pool = deadpool_diesel::sqlite::Pool::builder(manager)
+            .build()
             .expect("Failed to create test pool");
 
-        let mut conn = pool.get().expect("Failed to get connection");
-        diesel::sql_query(
-            "CREATE TABLE invite_code_admin (
-                rowid INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT NOT NULL UNIQUE,
-                password TEXT NOT NULL,
-                otp_base32 TEXT,
-                otp_auth_url TEXT,
-                otp_enabled INTEGER NOT NULL DEFAULT 0,
-                otp_verified INTEGER NOT NULL DEFAULT 0
-            );",
-        )
-        .execute(&mut conn)
+        let conn = pool.get().await.expect("Failed to get connection");
+        conn.interact(|conn| {
+            diesel::sql_query(
+                "CREATE TABLE invite_code_admin (
+                        rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+                        username TEXT NOT NULL UNIQUE,
+                        password TEXT NOT NULL,
+                        otp_base32 TEXT,
+                        otp_auth_url TEXT,
+                        otp_enabled INTEGER NOT NULL DEFAULT 0,
+                        otp_verified INTEGER NOT NULL DEFAULT 0
+                    );",
+            )
+            .execute(conn)
+        })
+        .await
+        .expect("Interact error")
         .expect("Failed to create test table");
 
         pool
@@ -182,7 +184,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_invite_codes_handler_unauthorized() {
-        let pool = setup_test_db("get_invite_unauth");
+        let pool = setup_test_db("get_invite_unauth").await;
 
         let config = Config {
             pds_admin_password: "pds_password".to_string(),
@@ -197,7 +199,7 @@ mod tests {
 
         impl axum::extract::FromRef<TestState> for crate::apis::DBPool {
             fn from_ref(state: &TestState) -> crate::apis::DBPool {
-                state.db_pool.clone()
+                crate::DbConn(state.db_pool.clone())
             }
         }
 

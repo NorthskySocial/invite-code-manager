@@ -1,9 +1,10 @@
-use crate::LoginUser;
-use crate::apis::{DBPool, invite_code_admin_to_response};
+use crate::apis::invite_code_admin_to_response;
 use crate::db::fetch_invite_code_admin_login;
 use crate::error::AppError;
 use crate::user::InviteCodeAdminData;
-use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
+use crate::{DbConn, LoginUser};
+use axum::extract::State;
+use axum::{Json, http::StatusCode, response::IntoResponse};
 use tower_sessions::Session;
 
 #[tracing::instrument(skip(db_pool, body, session))]
@@ -18,16 +19,15 @@ use tower_sessions::Session;
     )
 )]
 pub async fn login_user(
-    State(db_pool): State<DBPool>,
+    State(db_pool): State<DbConn>,
     session: Session,
     Json(body): Json<LoginUser>,
 ) -> Result<impl IntoResponse, AppError> {
     tracing::info!("Login user");
-    let mut conn = db_pool
-        .get()
-        .map_err(|e| AppError::DatabaseError(e.to_string()))?;
     let user =
-        fetch_invite_code_admin_login(&mut conn, body.username.as_str(), body.password.as_str());
+        fetch_invite_code_admin_login(&db_pool, body.username.as_str(), body.password.as_str())
+            .await;
+
     match user {
         None => Err(AppError::AuthError(format!(
             "Invalid username or password for: {}",
@@ -58,7 +58,7 @@ pub async fn login_user(
 mod tests {
     use super::*;
     use crate::LoginUser;
-    use crate::helper::create_invite_code_admin;
+    use crate::db::create_invite_code_admin;
     use axum::{
         Router,
         body::Body,
@@ -66,35 +66,37 @@ mod tests {
         routing::post,
     };
     use diesel::RunQueryDsl;
-    use diesel::SqliteConnection;
-    use diesel::r2d2::{ConnectionManager, Pool};
     use tower::ServiceExt;
     use tower_sessions::{MemoryStore, SessionManagerLayer};
 
-    type TestDBPool = Pool<ConnectionManager<SqliteConnection>>;
+    type TestDBPool = deadpool_diesel::sqlite::Pool;
 
-    fn setup_test_db(db_name: &str) -> TestDBPool {
-        let manager = ConnectionManager::<SqliteConnection>::new(format!(
-            "file:{}?mode=memory&cache=shared",
-            db_name
-        ));
-        let pool = Pool::builder()
-            .build(manager)
+    async fn setup_test_db(db_name: &str) -> TestDBPool {
+        let manager = deadpool_diesel::sqlite::Manager::new(
+            format!("file:{}?mode=memory&cache=shared", db_name),
+            deadpool_diesel::Runtime::Tokio1,
+        );
+        let pool = deadpool_diesel::sqlite::Pool::builder(manager)
+            .build()
             .expect("Failed to create test pool");
 
-        let mut conn = pool.get().expect("Failed to get connection");
-        diesel::sql_query(
-            "CREATE TABLE invite_code_admin (
-                rowid INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT NOT NULL UNIQUE,
-                password TEXT NOT NULL,
-                otp_base32 TEXT,
-                otp_auth_url TEXT,
-                otp_enabled INTEGER NOT NULL DEFAULT 0,
-                otp_verified INTEGER NOT NULL DEFAULT 0
-            );",
-        )
-        .execute(&mut conn)
+        let conn = pool.get().await.expect("Failed to get connection");
+        conn.interact(|conn| {
+            diesel::sql_query(
+                "CREATE TABLE invite_code_admin (
+                        rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+                        username TEXT NOT NULL UNIQUE,
+                        password TEXT NOT NULL,
+                        otp_base32 TEXT,
+                        otp_auth_url TEXT,
+                        otp_enabled INTEGER NOT NULL DEFAULT 0,
+                        otp_verified INTEGER NOT NULL DEFAULT 0
+                    );",
+            )
+            .execute(conn)
+        })
+        .await
+        .expect("Interact error")
         .expect("Failed to create test table");
 
         pool
@@ -102,11 +104,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_login_user_success() {
-        let pool = setup_test_db("login_success");
-        let mut conn = pool.get().expect("Failed to get connection");
+        let pool = setup_test_db("login_success").await;
+        let db_conn = crate::DbConn(pool.clone());
 
         // Create a user
-        create_invite_code_admin(&mut conn, "testuser", "testpassword")
+        create_invite_code_admin(&db_conn, "testuser", "testpassword")
+            .await
             .expect("Failed to create user");
 
         let session_store = MemoryStore::default();
@@ -115,7 +118,7 @@ mod tests {
         let app = Router::new()
             .route("/auth/login", post(login_user))
             .layer(session_layer)
-            .with_state(pool.clone());
+            .with_state(crate::DbConn(pool.clone()));
 
         let login_payload = LoginUser {
             username: "testuser".to_string(),
@@ -135,11 +138,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_login_user_invalid_credentials() {
-        let pool = setup_test_db("login_invalid");
-        let mut conn = pool.get().expect("Failed to get connection");
+        let pool = setup_test_db("login_invalid").await;
+        let db_conn = crate::DbConn(pool.clone());
 
         // Create a user
-        create_invite_code_admin(&mut conn, "testuser", "testpassword")
+        create_invite_code_admin(&db_conn, "testuser", "testpassword")
+            .await
             .expect("Failed to create user");
 
         let session_store = MemoryStore::default();
@@ -148,7 +152,7 @@ mod tests {
         let app = Router::new()
             .route("/auth/login", post(login_user))
             .layer(session_layer)
-            .with_state(pool.clone());
+            .with_state(crate::DbConn(pool.clone()));
 
         let login_payload = LoginUser {
             username: "testuser".to_string(),
