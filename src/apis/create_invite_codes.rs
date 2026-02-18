@@ -49,6 +49,7 @@ pub async fn create_invite_codes_handler(
 mod tests {
     use super::*;
     use crate::config::Config;
+    use axum::extract;
     use axum::{
         Router,
         body::Body,
@@ -106,7 +107,7 @@ mod tests {
             config: Config,
         }
 
-        impl ax_ext::FromRef<TestState> for crate::apis::DBPool {
+        impl extract::FromRef<TestState> for crate::apis::DBPool {
             fn from_ref(state: &TestState) -> crate::apis::DBPool {
                 crate::DbConn(state.db_pool.clone())
             }
@@ -118,7 +119,6 @@ mod tests {
             }
         }
 
-        use axum::extract as ax_ext;
         let state = TestState {
             db_pool: pool,
             config,

@@ -1,243 +1,126 @@
 # Invite Code Manager
 
-[![License](https://img.shields.io/badge/license-MIT-blue)](https://opensource.org/licenses/mit)
+An Invite Code Manager built with **Rust**, using the **Axum** web framework, **Diesel** ORM with *
+*SQLite**, and **Tokio** for asynchronous runtime. This tool manages invite codes for a PDS (
+Personal Data Server).
 
-## Overview
+## Table of Contents
 
-A backend application that acts as a middleman to manage invite codes for Personal Data Server (PDS)
-instances. The purpose is to avoid having to share the admin password for the PDS with many users by
-providing a secure web interface for invite code management with OTP-based authentication.
+- [Prerequisites](#prerequisites)
+- [Environment Variables](#environment-variables)
+- [Setup and Run](#setup-and-run)
+- [CLI Commands](#cli-commands)
+- [API Documentation](#api-documentation)
+- [Testing](#testing)
+- [Project Structure](#project-structure)
+- [License](#license)
 
-## Technology Stack
+## Prerequisites
 
-- **Language**: Rust (Edition 2024)
-- **Web Framework**: Axum
-- **Database**: SQLite with Diesel ORM
-- **Authentication**: Session-based with TOTP (Time-based One-Time Password)
-- **Password Hashing**: Argon2
-- **HTTP Client**: Reqwest for PDS communication
-- **Package Manager**: Cargo
-
-## Requirements
-
-- **Rust**: Version 1.92.0+ (managed via `rust-toolchain.toml`)
-- **Diesel CLI**: Required for database migrations
-  ```bash
-  cargo install diesel_cli --no-default-features --features sqlite
-  ```
-
-## Setup and Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd InviteCodeManager
-   ```
-
-2. **Configure environment variables**
-
-   Copy the sample environment file and configure it:
-   ```bash
-   cp .env.sample .env
-   ```
-
-   Edit the `.env` file with your configuration (see Environment Variables section below).
-
-3. **Set up the database**
-
-   Run migrations to create the SQLite database schema:
-   ```bash
-   diesel migration run
-   ```
-
-4. **Create an admin user**
-
-   Create an admin user interactively using the CLI:
-   ```bash
-   cargo run -- create-user
-   ```
-
-   This will prompt you to enter a username and password for a new admin user. Note that this user
-   is NOT the same as a Bluesky user in your PDS, but a separate entity used to manage invite codes.
+- [Rust](https://www.rust-lang.org/tools/install) (2024 edition)
+- [SQLite](https://sqlite.org/index.html)
+- [Diesel CLI](https://diesel.rs/guides/getting-started) (for database migrations)
 
 ## Environment Variables
 
-The following environment variables can be configured in your `.env` file:
+The application requires several environment variables. You can set them in a `.env` file or in your
+environment:
 
-### Required Variables
+| Variable             | Description                                    | Required | Default |
+|----------------------|------------------------------------------------|----------|---------|
+| `PDS_ADMIN_PASSWORD` | Administrative password for the PDS            | Yes      | -       |
+| `PDS_ENDPOINT`       | The endpoint URL for the PDS                   | Yes      | -       |
+| `DATABASE_URL`       | Path to the SQLite database file               | Yes      | -       |
+| `DB_MIN_IDLE`        | Minimum number of idle connections in the pool | No       | `1`     |
+| `SERVER_PORT`        | Port the server listens on                     | No       | `9090`  |
+| `ALLOWED_ORIGIN`     | CORS allowed origin                            | No       | `*`     |
 
-- `PDS_ADMIN_PASSWORD`: Admin password for your PDS instance
-- `PDS_ENDPOINT`: URL endpoint of your PDS instance
+Example `.env`:
 
-### Optional Variables (with defaults)
-
-- `DATABASE_URL`: SQLite database file path (default: "database.sqlite")
-- `DB_MIN_IDLE`: Minimum idle connections in pool (default: "1")
-- `SERVER_PORT`: HTTP server port (default: "9090")
-- `ALLOWED_ORIGIN`: Allowed origin for CORS (default: "*")
-- `SALT`: Salt for password hashing (default: "salt_password")
-
-## Running the Application
-
-### Development
 ```bash
-# Run in development mode
+PDS_ADMIN_PASSWORD=your_pds_password
+PDS_ENDPOINT=https://pds.example.com
+DATABASE_URL=sqlite://invitemanager.sqlite
+SERVER_PORT=9090
+```
+
+## Setup and Run
+
+### 1. Database Migrations
+
+Before running the application, ensure the database is initialized with migrations:
+
+```bash
+diesel migration run
+```
+
+### 2. Run the Server
+
+To start the HTTP server:
+```bash
 cargo run
-
-# Build for development
-cargo build
 ```
 
-### Production
-
-```bash
-# Build optimized release
-cargo build --release
-
-# Run release binary
-./target/release/InviteCodeManager
-```
-
-### Docker
-
-```bash
-# Build Docker image
-docker build -t invite-code-manager .
-
-# Run with environment file
-docker run --env-file .env -p 9090:9090 invite-code-manager
-```
-
-## API Endpoints
-
-The application exposes the following REST API endpoints:
-
-- `GET /health` - Health check
-- `POST /auth/login` - User authentication
-- `POST /auth/otp/generate` - Generate OTP secret for TOTP setup
-- `POST /auth/otp/verify` - Verify OTP setup completion
-- `POST /auth/otp/validate` - Validate OTP token for authentication
-- `POST /create-invite-codes` - Create new invite codes
-- `GET /invite-codes` - Retrieve existing invite codes
-- `POST /disable-invite-codes` - Disable invite codes
-- `GET /admins` - List admin users
-- `POST /admins` - Add a new admin user
-- `DELETE /admins` - Remove an admin user
-
-The server runs on `0.0.0.0:9090` by default and can be configured via the `SERVER_PORT` environment
-variable.
+The server will be available at `http://localhost:9090` (or the port specified by `SERVER_PORT`).
 
 ## CLI Commands
 
-- `cargo run -- create-user`: Interactively create a new admin user
-- `cargo run -- list-users`: List all existing admin users
+The application provides CLI commands for administrative tasks:
+
+- **Create a user**:
+  ```bash
+  cargo run -- create-user
+  ```
+- **List users**:
+  ```bash
+  cargo run -- list-users
+  ```
+
+## API Documentation
+
+The project includes built-in API documentation via Swagger UI (using `utoipa` and
+`utoipa-swagger-ui`).
+Once the server is running, you can access the documentation at:
+`http://localhost:9090/swagger-ui`
 
 ## Testing
 
-Unit and integration tests are implemented in the project.
+Tests are located in the `tests/` directory and use an in-memory SQLite database for isolation.
 
-To run the tests:
+- **Run all tests**:
+  ```bash
+  cargo test
+  ```
+- **Run a specific test**:
+  ```bash
+  cargo test --test <test_name>
+  ```
 
-```bash
-cargo test
-```
+### Adding New Tests
 
-### Code Coverage
+When adding new integration tests, use `tests/common/mod.rs` to set up the test environment.
+Typical test setup includes:
 
-Code coverage is generated using `cargo-tarpaulin`.
-
-1. **Install Tarpaulin**
-   ```bash
-   cargo install cargo-tarpaulin
-   ```
-
-2. **Run Coverage**
-   ```bash
-   cargo tarpaulin --out html
-   ```
-   This will generate a `tarpaulin-report.html` file with the coverage results.
-
-The project also has a GitHub Action configured to generate and upload coverage reports on every
-push and pull request.
+1. `common::setup_test_db()`
+2. `common::init_db(&db_pool)`
+3. `common::setup_app(db_pool)`
 
 ## Project Structure
 
+```text
+.
+├── Cargo.toml          # Rust dependencies and metadata
+├── migrations/         # Database migrations (Diesel)
+├── src/                # Source code
+│   ├── apis/           # Axum request handlers and route definitions
+│   ├── auth/           # Authentication logic (TOTP, Sessions)
+│   ├── db/             # Database connection and utilities
+│   ├── models/         # Data models and schemas
+│   ├── cli.rs          # CLI command implementations
+│   ├── config.rs       # Configuration loading from environment variables
+│   ├── main.rs         # Application entry point
+│   ├── schema.rs       # Auto-generated Diesel schema
+│   └── state.rs        # Shared application state
+├── tests/              # Integration tests
+└── README.md           # Project documentation
 ```
-src/
-├── main.rs              # Application entry point and server setup
-├── cli.rs               # CLI commands (user creation)
-├── config.rs            # Configuration structures
-├── error.rs             # Custom error types
-├── helper.rs            # Utility functions for OTP and user management
-├── schema.rs            # Generated by Diesel (database schema)
-├── user.rs              # User models and authentication
-├── db/                  # Database management and pooling
-└── apis/                # HTTP route handlers
-    ├── add_admin.rs
-    ├── create_invite_codes.rs
-    ├── disable_invite_codes.rs
-    ├── generate_otp.rs
-    ├── get_invite_codes.rs
-    ├── health.rs
-    ├── list_admins.rs
-    ├── login.rs
-    ├── remove_admin.rs
-    ├── validate_otp.rs
-    └── verify_otp.rs
-
-migrations/              # Database migration files
-├── 2025-03-14-044938_create_users/
-│   ├── up.sql
-│   └── down.sql
-
-Cargo.toml              # Rust package configuration
-Cargo.lock              # Dependency lock file
-rust-toolchain.toml     # Rust toolchain specification
-diesel.toml             # Diesel ORM configuration
-Dockerfile              # Container build configuration
-.env.sample             # Environment variables template
-```
-
-## Database Schema
-
-The application uses a single SQLite table `invite_code_admin`:
-
-- `rowid`: Integer primary key
-- `username`: Text (unique identifier)
-- `password`: Text (Argon2 hashed)
-- `otp_base32`: Nullable text (TOTP secret)
-- `otp_auth_url`: Nullable text (QR code URL)
-- `otp_enabled`: Integer boolean
-- `otp_verified`: Integer boolean
-
-## Development
-
-### Code Style
-
-- Use `cargo fmt` for code formatting
-- Use `cargo clippy` for linting
-- Follow standard Rust naming conventions
-
-### Debugging
-
-- Use `RUST_LOG=debug cargo run` for detailed logging
-- Ensure proper time synchronization for OTP functionality
-- Verify PDS connection with valid admin credentials
-
-## Usage
-
-Once setup is complete, the application starts a web server that can be accessed through a web
-interface. You can use
-the [invite code client](https://github.com/NorthskySocial/invite-code-client) to interact with the
-server.
-
-The application provides a secure interface for:
-
-1. User authentication with username/password and optional TOTP
-2. Managing invite codes for your PDS instance
-3. Creating, retrieving, and disabling invite codes without exposing PDS admin credentials
-
-## License
-
-This project is licensed under the MIT License - see
-the [LICENSE](https://opensource.org/licenses/mit) for details.
