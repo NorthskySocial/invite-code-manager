@@ -61,6 +61,59 @@ where
     }
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct InviteCodeAdminPreLogin {
+    pub username: String,
+    #[serde(skip_serializing)]
+    pub password: String,
+    pub otp_base32: Option<String>,
+    pub otp_auth_url: Option<String>,
+    pub otp_enabled: i32,
+    pub otp_verified: i32,
+}
+
+impl From<InviteCodeAdmin> for InviteCodeAdminPreLogin {
+    fn from(admin: InviteCodeAdmin) -> Self {
+        Self {
+            username: admin.username,
+            password: admin.password,
+            otp_base32: admin.otp_base32,
+            otp_auth_url: admin.otp_auth_url,
+            otp_enabled: admin.otp_enabled,
+            otp_verified: admin.otp_verified,
+        }
+    }
+}
+
+#[async_trait]
+impl<S> FromRequestParts<S> for InviteCodeAdminPreLogin
+where
+    DbConn: FromRef<S>,
+    S: Send + Sync,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let session = Session::from_request_parts(parts, state)
+            .await
+            .map_err(|e| AppError::InternalError(format!("Session error: {:?}", e)))?;
+
+        let username: String = session
+            .get("username")
+            .await
+            .map_err(|e| AppError::InternalError(format!("Session error: {:?}", e)))?
+            .ok_or_else(|| AppError::AuthError("Not logged in".to_string()))?;
+
+        let db_pool = DbConn::from_ref(state);
+
+        let admin = fetch_invite_code_admin(&db_pool, &username)
+            .await
+            .ok_or_else(|| AppError::AuthError("User not found".to_string()))?;
+
+        Ok(admin.into())
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct VerifyOTPSchema {
     pub token: String,
@@ -74,8 +127,6 @@ pub struct InviteCodeAdminData {
     pub otp_base32: Option<String>,
     pub otp_auth_url: Option<String>,
 }
-
-// TODO: Re-implement Axum extractor for InviteCodeAdmin after all routes are migrated.
 
 #[derive(Serialize, Deserialize, ToSchema)]
 pub struct CreateInviteCodeSchema {

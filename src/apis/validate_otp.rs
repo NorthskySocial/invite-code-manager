@@ -1,5 +1,5 @@
 use crate::error::AppError;
-use crate::user::{InviteCodeAdmin, VerifyOTPSchema};
+use crate::user::{InviteCodeAdminPreLogin, VerifyOTPSchema};
 use axum::{Json, response::IntoResponse};
 use serde::Serialize;
 use totp_rs::{Algorithm, Secret, TOTP};
@@ -27,7 +27,7 @@ pub struct ValidateOTPResponse {
 )]
 pub async fn validate_otp_handler(
     session: Session,
-    invite_code_admin: InviteCodeAdmin,
+    invite_code_admin: InviteCodeAdminPreLogin,
     Json(body): Json<VerifyOTPSchema>,
 ) -> Result<impl IntoResponse, AppError> {
     if !invite_code_admin.otp_enabled.eq(&1) {
