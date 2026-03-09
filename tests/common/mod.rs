@@ -88,6 +88,7 @@ pub async fn setup_app(db_pool: DBPool) -> Router {
         .with_state(app_state)
 }
 
+#[allow(dead_code)]
 pub fn create_test_admin(conn: &mut DBPooledConnection, username: &str, password: &str) {
     let config = argon2::Config::default();
     let hashed_password =
