@@ -105,7 +105,7 @@ mod tests {
     #[tokio::test]
     async fn test_login_user_success() {
         let pool = setup_test_db("login_success").await;
-        let db_conn = crate::DbConn(pool.clone());
+        let db_conn = DbConn(pool.clone());
 
         // Create a user
         create_invite_code_admin(&db_conn, "testuser", "testpassword")
@@ -118,7 +118,7 @@ mod tests {
         let app = Router::new()
             .route("/auth/login", post(login_user))
             .layer(session_layer)
-            .with_state(crate::DbConn(pool.clone()));
+            .with_state(DbConn(pool.clone()));
 
         let login_payload = LoginUser {
             username: "testuser".to_string(),
@@ -139,7 +139,7 @@ mod tests {
     #[tokio::test]
     async fn test_login_user_invalid_credentials() {
         let pool = setup_test_db("login_invalid").await;
-        let db_conn = crate::DbConn(pool.clone());
+        let db_conn = DbConn(pool.clone());
 
         // Create a user
         create_invite_code_admin(&db_conn, "testuser", "testpassword")
@@ -152,7 +152,7 @@ mod tests {
         let app = Router::new()
             .route("/auth/login", post(login_user))
             .layer(session_layer)
-            .with_state(crate::DbConn(pool.clone()));
+            .with_state(DbConn(pool.clone()));
 
         let login_payload = LoginUser {
             username: "testuser".to_string(),

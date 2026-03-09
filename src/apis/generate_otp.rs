@@ -124,7 +124,7 @@ mod tests {
 
         let app = Router::new()
             .route("/auth/otp/generate", post(generate_otp_handler))
-            .with_state(crate::DbConn(pool.clone()))
+            .with_state(DbConn(pool.clone()))
             .layer(tower_sessions::SessionManagerLayer::new(
                 tower_sessions::MemoryStore::default(),
             ));

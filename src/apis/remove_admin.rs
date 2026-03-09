@@ -126,7 +126,7 @@ mod tests {
 
         let app = Router::new()
             .route("/admins", delete(remove_admin_handler))
-            .with_state(crate::DbConn(pool.clone()))
+            .with_state(DbConn(pool.clone()))
             .layer(tower_sessions::SessionManagerLayer::new(
                 tower_sessions::MemoryStore::default(),
             ));

@@ -31,6 +31,7 @@ use utoipa::OpenApi;
         invite_code_manager::apis::verify_otp::verify_otp_handler,
         invite_code_manager::apis::validate_otp::validate_otp_handler,
         invite_code_manager::apis::create_invite_codes::create_invite_codes_handler,
+        invite_code_manager::apis::get_account_email::get_account_email_handler,
         invite_code_manager::apis::get_invite_codes::get_invite_codes_handler,
         invite_code_manager::apis::disable_invite_codes::disable_invite_codes_handler,
     ),
@@ -50,6 +51,7 @@ use utoipa::OpenApi;
             invite_code_manager::apis::remove_admin::RemoveAdminRequest,
             invite_code_manager::apis::remove_admin::RemoveAdminResponse,
             invite_code_manager::apis::generate_otp::GenerateOTPResponse,
+            invite_code_manager::apis::get_account_email::AccountEmailResponse,
             invite_code_manager::apis::verify_otp::VerifyOTPResponse,
             invite_code_manager::apis::validate_otp::ValidateOTPResponse,
         )
@@ -187,6 +189,10 @@ async fn main() {
         .route("/auth/otp/validate", post(validate_otp_handler))
         .route("/create-invite-codes", post(create_invite_codes_handler))
         .route("/invite-codes", get(get_invite_codes_handler))
+        .route(
+            "/account/email",
+            get(invite_code_manager::apis::get_account_email_handler),
+        )
         .route("/disable-invite-codes", post(disable_invite_codes_handler))
         .with_state(app_state);
 

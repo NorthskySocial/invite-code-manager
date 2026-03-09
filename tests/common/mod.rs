@@ -82,6 +82,7 @@ pub async fn setup_app(db_pool: DBPool) -> Router {
         .route("/auth/otp/validate", post(validate_otp_handler))
         .route("/create-invite-codes", post(create_invite_codes_handler))
         .route("/invite-codes", get(get_invite_codes_handler))
+        .route("/account/email", get(get_account_email_handler))
         .route("/disable-invite-codes", post(disable_invite_codes_handler))
         .layer(session_layer)
         .with_state(app_state)
