@@ -193,6 +193,10 @@ async fn main() {
             "/account/email",
             get(invite_code_manager::apis::get_account_email_handler),
         )
+        .route(
+            "/account/emails",
+            get(invite_code_manager::apis::get_account_emails_handler),
+        )
         .route("/disable-invite-codes", post(disable_invite_codes_handler))
         .with_state(app_state);
 
