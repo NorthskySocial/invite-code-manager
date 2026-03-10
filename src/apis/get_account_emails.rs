@@ -2,7 +2,6 @@ use crate::GET_ACCOUNT_INFOS;
 use crate::config::Config;
 use crate::error::AppError;
 use crate::user::InviteCodeAdmin;
-use ax_auth::SessionManagerLayer;
 use axum::{Json, extract::Query, extract::State, response::IntoResponse};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
