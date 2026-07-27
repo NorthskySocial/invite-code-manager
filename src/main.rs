@@ -97,6 +97,14 @@ async fn main() {
         .unwrap_or("9090".to_string())
         .parse::<u16>()
         .expect("SERVER_PORT must be a valid u16");
+    let session_secret = env::var("SESSION_SECRET")
+        .expect("env variable SESSION_SECRET should be set and at least 64 characters");
+    if session_secret.len() < 64 {
+        panic!("SESSION_SECRET must be at least 64 characters");
+    }
+    let session_cookie_secure = env::var("SESSION_COOKIE_SECURE")
+        .unwrap_or_else(|_| "true".to_string())
+        .eq_ignore_ascii_case("true");
 
     let db_manager = deadpool_diesel::sqlite::Manager::new(
         database_url.clone(),
@@ -169,7 +177,11 @@ async fn main() {
     };
 
     let session_store = MemoryStore::default();
-    let session_layer = SessionManagerLayer::new(session_store);
+    let session_layer = SessionManagerLayer::new(session_store)
+        .with_http_only(true)
+        .with_same_site(SameSite::Strict)
+        .with_secure(session_cookie_secure)
+        .with_signed(tower_sessions::cookie::Key::from(session_secret.as_bytes()));
 
     let app_state = AppState {
         db_pool: db_pool.clone(),

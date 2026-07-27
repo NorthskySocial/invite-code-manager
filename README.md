@@ -6,14 +6,18 @@ Personal Data Server).
 
 ## Table of Contents
 
-- [Prerequisites](#prerequisites)
-- [Environment Variables](#environment-variables)
-- [Setup and Run](#setup-and-run)
-- [CLI Commands](#cli-commands)
-- [API Documentation](#api-documentation)
-- [Testing](#testing)
-- [Project Structure](#project-structure)
-- [License](#license)
+- [Invite Code Manager](#invite-code-manager)
+  - [Table of Contents](#table-of-contents)
+  - [Prerequisites](#prerequisites)
+  - [Environment Variables](#environment-variables)
+  - [Setup and Run](#setup-and-run)
+    - [1. Database Migrations](#1-database-migrations)
+    - [2. Run the Server](#2-run-the-server)
+  - [CLI Commands](#cli-commands)
+  - [API Documentation](#api-documentation)
+  - [Testing](#testing)
+    - [Adding New Tests](#adding-new-tests)
+  - [Project Structure](#project-structure)
 
 ## Prerequisites
 
@@ -26,22 +30,32 @@ Personal Data Server).
 The application requires several environment variables. You can set them in a `.env` file or in your
 environment:
 
-| Variable             | Description                                    | Required | Default |
-|----------------------|------------------------------------------------|----------|---------|
-| `PDS_ADMIN_PASSWORD` | Administrative password for the PDS            | Yes      | -       |
-| `PDS_ENDPOINT`       | The endpoint URL for the PDS                   | Yes      | -       |
-| `DATABASE_URL`       | Path to the SQLite database file               | Yes      | -       |
-| `DB_MIN_IDLE`        | Minimum number of idle connections in the pool | No       | `1`     |
-| `SERVER_PORT`        | Port the server listens on                     | No       | `9090`  |
-| `ALLOWED_ORIGIN`     | CORS allowed origin                            | No       | `*`     |
+| Variable                | Description                                                                 | Required | Default |
+|-------------------------|-----------------------------------------------------------------------------|----------|---------|
+| `PDS_ADMIN_PASSWORD`    | Administrative password for the PDS                                         | Yes      | -       |
+| `PDS_ENDPOINT`          | Endpoint URL for the PDS                                                    | Yes      | -       |
+| `DATABASE_URL`          | Path to the SQLite database file                                            | Yes      | -       |
+| `SESSION_SECRET`        | Session signing secret (must be at least 64 characters)                     | Yes      | -       |
+| `DB_MIN_IDLE`           | Minimum number of connections in the pool                                   | No       | `1`     |
+| `SERVER_PORT`           | Port the server listens on                                                  | No       | `9090`  |
+| `ALLOWED_ORIGIN`        | CORS allowed origin (`*` or a specific origin like `https://app.example`) | No       | `*`     |
+| `SESSION_COOKIE_SECURE` | Whether session cookies require HTTPS (`true` or `false`)                 | No       | `true`  |
 
 Example `.env`:
 
 ```bash
 PDS_ADMIN_PASSWORD=your_pds_password
 PDS_ENDPOINT=https://pds.example.com
-DATABASE_URL=sqlite://invitemanager.sqlite
+DATABASE_URL=database.sqlite
+SESSION_SECRET=64-character-secret-key
+SESSION_COOKIE_SECURE=true
 SERVER_PORT=9090
+```
+
+Generate a secure session secret on macOS/Linux:
+
+```bash
+openssl rand -base64 64
 ```
 
 ## Setup and Run
