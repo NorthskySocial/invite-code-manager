@@ -111,30 +111,36 @@ pub fn create_invite_code_admin_sync(
         .execute(conn)
 }
 
-pub async fn create_invite_code_admin(
-    db: &DbConn,
-    _username: &str,
-    _password: &str,
-) -> Result<usize, diesel::result::Error> {
+pub fn build_invite_code_admin(
+    username: &str,
+    password: &str,
+) -> Result<InviteCodeAdmin, diesel::result::Error> {
     let mut salt = [0_u8; 16];
     rand::rng().fill_bytes(&mut salt);
 
-    // Hash the password using Argon2
     let hashed_password = argon2::hash_encoded(
-        _password.as_bytes(),
+        password.as_bytes(),
         &salt,
         &argon2::Config::default(),
     )
     .map_err(|_| diesel::result::Error::RollbackTransaction)?;
 
-    let new_admin = InviteCodeAdmin {
-        username: _username.to_string(),
+    Ok(InviteCodeAdmin {
+        username: username.to_string(),
         password: hashed_password,
         otp_base32: None,
         otp_auth_url: None,
         otp_enabled: 0,
         otp_verified: 0,
-    };
+    })
+}
+
+pub async fn create_invite_code_admin(
+    db: &DbConn,
+    _username: &str,
+    _password: &str,
+) -> Result<usize, diesel::result::Error> {
+    let new_admin = build_invite_code_admin(_username, _password)?;
 
     let conn = db.0.get().await.expect("Db exception");
     conn.interact(move |conn| create_invite_code_admin_sync(conn, &new_admin))

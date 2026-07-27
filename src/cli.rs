@@ -1,9 +1,7 @@
 use crate::schema::invite_code_admin::dsl::invite_code_admin;
 use crate::user::InviteCodeAdmin;
-use argon2::Config;
 use diesel::SqliteConnection;
 use diesel::{QueryDsl, RunQueryDsl, SelectableHelper};
-use rand::RngCore;
 use rpassword::read_password;
 use std::error::Error;
 use std::io::{self, Write};
@@ -30,26 +28,8 @@ pub fn create_user(conn: &mut SqliteConnection) -> Result<(), Box<dyn Error>> {
     io::stdout().flush()?;
     let password = read_password()?;
 
-    let mut salt = [0_u8; 16];
-    rand::rng().fill_bytes(&mut salt);
-
-    let config = Config::default();
-    let hashed_password = argon2::hash_encoded(password.as_bytes(), &salt, &config).unwrap();
-
-    // Create the new user
-    let new_user = InviteCodeAdmin {
-        username: username.to_string(),
-        password: hashed_password,
-        otp_base32: None,
-        otp_auth_url: None,
-        otp_enabled: 0,
-        otp_verified: 0,
-    };
-
-    // Insert the new user into the database
-    diesel::insert_into(crate::schema::invite_code_admin::table)
-        .values(&new_user)
-        .execute(conn)?;
+    let new_user = crate::db::build_invite_code_admin(username, &password)?;
+    crate::db::create_invite_code_admin_sync(conn, &new_user)?;
 
     tracing::info!("User '{}' created successfully!", username);
     Ok(())

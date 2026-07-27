@@ -245,6 +245,20 @@ mod tests {
         assert!(admin.password.starts_with("$argon2")); // Argon2 hash format
     }
 
+    #[test]
+    fn test_build_invite_code_admin_defaults_and_hash() {
+        let admin = crate::db::build_invite_code_admin("builder_user", "builder_pass")
+            .expect("Failed to build admin record");
+
+        assert_eq!(admin.username, "builder_user");
+        assert_ne!(admin.password, "builder_pass");
+        assert!(admin.password.starts_with("$argon2"));
+        assert!(admin.otp_base32.is_none());
+        assert!(admin.otp_auth_url.is_none());
+        assert_eq!(admin.otp_enabled, 0);
+        assert_eq!(admin.otp_verified, 0);
+    }
+
     #[tokio::test]
     async fn test_identical_passwords_have_different_hashes() {
         let pool = setup_test_db().await;
