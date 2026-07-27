@@ -52,7 +52,7 @@ where
                 .await
                 .map_err(|e| AppError::InternalError(format!("Session error: {:?}", e)))?;
 
-            if otp_validated.is_none() {
+            if otp_validated.as_deref() != Some("y") {
                 return Err(AppError::AuthError("2FA required".to_string()));
             }
         }

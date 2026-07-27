@@ -16,6 +16,7 @@ use invite_code_manager::{DbConn, cli};
 use std::env;
 use std::net::SocketAddr;
 use tower_http::cors::{Any, CorsLayer};
+use tower_sessions::cookie::SameSite;
 use tower_sessions::{MemoryStore, SessionManagerLayer};
 use utoipa::OpenApi;
 

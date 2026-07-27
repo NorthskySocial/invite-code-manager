@@ -35,6 +35,15 @@ pub async fn login_user(
         ))),
         Some(user) => {
             session
+                .remove::<String>("otp_validated")
+                .await
+                .map_err(|e| AppError::InternalError(format!("Session error: {:?}", e)))?;
+            session
+                .remove::<String>("2fa_not_required")
+                .await
+                .map_err(|e| AppError::InternalError(format!("Session error: {:?}", e)))?;
+
+            session
                 .insert("username", body.username.clone())
                 .await
                 .map_err(|e| AppError::InternalError(format!("Session error: {:?}", e)))?;
@@ -57,17 +66,18 @@ pub async fn login_user(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::apis::list_admins::list_admins_handler;
     use crate::LoginUser;
     use crate::db::create_invite_code_admin;
     use axum::{
         Router,
         body::Body,
         http::{Request, StatusCode},
-        routing::post,
+        routing::{get, post},
     };
     use diesel::RunQueryDsl;
     use tower::ServiceExt;
-    use tower_sessions::{MemoryStore, SessionManagerLayer};
+    use tower_sessions::{MemoryStore, Session, SessionManagerLayer};
 
     type TestDBPool = deadpool_diesel::sqlite::Pool;
 
@@ -100,6 +110,22 @@ mod tests {
         .expect("Failed to create test table");
 
         pool
+    }
+
+    fn session_cookie(resp: &axum::response::Response) -> Option<String> {
+        resp.headers()
+            .get_all("set-cookie")
+            .iter()
+            .filter_map(|v| v.to_str().ok())
+            .find_map(|cookie| cookie.split(';').next().map(|s| s.to_string()))
+    }
+
+    async fn seed_otp_validated(session: Session) -> Result<StatusCode, AppError> {
+        session
+            .insert("otp_validated", "y")
+            .await
+            .map_err(|e| AppError::InternalError(format!("Session error: {:?}", e)))?;
+        Ok(StatusCode::NO_CONTENT)
     }
 
     #[tokio::test]
@@ -168,5 +194,69 @@ mod tests {
 
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_login_clears_stale_otp_validation() {
+        let pool = setup_test_db("login_clears_stale_otp").await;
+        let db_conn = DbConn(pool.clone());
+
+        create_invite_code_admin(&db_conn, "testuser", "testpassword")
+            .await
+            .expect("Failed to create user");
+
+        let conn = pool.get().await.expect("Failed to get connection");
+        conn.interact(|conn| {
+            diesel::sql_query(
+                "UPDATE invite_code_admin SET otp_enabled = 1, otp_verified = 1 WHERE username = 'testuser'",
+            )
+            .execute(conn)
+        })
+        .await
+        .expect("Interact error")
+        .expect("Failed to update user otp flags");
+
+        let app = Router::new()
+            .route("/auth/login", post(login_user))
+            .route("/admins", get(list_admins_handler))
+            .route("/test/seed-otp", post(seed_otp_validated))
+            .layer(SessionManagerLayer::new(MemoryStore::default()))
+            .with_state(DbConn(pool.clone()));
+
+        let seed_req = Request::builder()
+            .method("POST")
+            .uri("/test/seed-otp")
+            .body(Body::empty())
+            .unwrap();
+        let seed_resp = app.clone().oneshot(seed_req).await.unwrap();
+        let seeded_cookie = session_cookie(&seed_resp).expect("Expected a session cookie");
+
+        let login_payload = LoginUser {
+            username: "testuser".to_string(),
+            password: "testpassword".to_string(),
+        };
+        let login_req = Request::builder()
+            .method("POST")
+            .uri("/auth/login")
+            .header("content-type", "application/json")
+            .header("cookie", seeded_cookie)
+            .body(Body::from(serde_json::to_string(&login_payload).unwrap()))
+            .unwrap();
+        let login_resp = app.clone().oneshot(login_req).await.unwrap();
+        assert_eq!(login_resp.status(), StatusCode::OK);
+
+        let auth_cookie = session_cookie(&login_resp)
+            .or_else(|| session_cookie(&seed_resp))
+            .expect("Expected a session cookie after login");
+
+        let admin_req = Request::builder()
+            .method("GET")
+            .uri("/admins")
+            .header("cookie", auth_cookie)
+            .body(Body::empty())
+            .unwrap();
+        let admin_resp = app.oneshot(admin_req).await.unwrap();
+
+        assert_eq!(admin_resp.status(), StatusCode::UNAUTHORIZED);
     }
 }
