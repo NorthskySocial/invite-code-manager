@@ -246,6 +246,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_identical_passwords_have_different_hashes() {
+        let pool = setup_test_db().await;
+        let db_conn = DbConn(pool);
+
+        create_invite_code_admin(&db_conn, "salt_user_a", "samepass")
+            .await
+            .expect("Failed to create first admin");
+        create_invite_code_admin(&db_conn, "salt_user_b", "samepass")
+            .await
+            .expect("Failed to create second admin");
+
+        let user_a = fetch_invite_code_admin(&db_conn, "salt_user_a")
+            .await
+            .expect("First admin should exist");
+        let user_b = fetch_invite_code_admin(&db_conn, "salt_user_b")
+            .await
+            .expect("Second admin should exist");
+
+        assert_ne!(user_a.password, user_b.password);
+    }
+
+    #[tokio::test]
     async fn test_admin_creation_validation() {
         let pool = setup_test_db().await;
         let db_conn = DbConn(pool);

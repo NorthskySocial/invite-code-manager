@@ -3,8 +3,8 @@ use crate::user::InviteCodeAdmin;
 use argon2::Config;
 use diesel::SqliteConnection;
 use diesel::{QueryDsl, RunQueryDsl, SelectableHelper};
+use rand::RngCore;
 use rpassword::read_password;
-use std::env;
 use std::error::Error;
 use std::io::{self, Write};
 
@@ -30,17 +30,11 @@ pub fn create_user(conn: &mut SqliteConnection) -> Result<(), Box<dyn Error>> {
     io::stdout().flush()?;
     let password = read_password()?;
 
-    let salt = env::var("SALT")?;
-    if salt.is_empty() {
-        return Err("SALT environment variable is not set or is empty".into());
-    }
-    if salt.len() < 8 {
-        return Err("SALT must be at least 8 characters long".into());
-    }
+    let mut salt = [0_u8; 16];
+    rand::rng().fill_bytes(&mut salt);
 
     let config = Config::default();
-    let hashed_password =
-        argon2::hash_encoded(password.as_bytes(), salt.as_bytes(), &config).unwrap();
+    let hashed_password = argon2::hash_encoded(password.as_bytes(), &salt, &config).unwrap();
 
     // Create the new user
     let new_user = InviteCodeAdmin {

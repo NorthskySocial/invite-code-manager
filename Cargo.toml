@@ -9,7 +9,7 @@ tokio = { version = "1.38.0", features = ["full"] }
 axum = { version = "0.7.5", features = ["macros"] }
 tower = { version = "0.4.13", features = ["util"] }
 tower-http = { version = "0.5.2", features = ["cors", "trace", "fs"] }
-tower-sessions = "0.12.2"
+tower-sessions = { version = "0.12.2", features = ["signed"] }
 serde = { version = "1.0.204", features = ["derive"] }
 dotenvy = "0.15.7"
 diesel = { version = "2.2.2", features = ["sqlite", "r2d2"] }

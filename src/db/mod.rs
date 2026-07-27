@@ -2,6 +2,7 @@ use crate::DbConn;
 use crate::schema::invite_code_admin::{otp_auth_url, otp_base32};
 use crate::user::InviteCodeAdmin;
 use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl, SelectableHelper, SqliteConnection};
+use rand::RngCore;
 
 pub async fn fetch_invite_code_admin_login(
     db: &DbConn,
@@ -115,10 +116,13 @@ pub async fn create_invite_code_admin(
     _username: &str,
     _password: &str,
 ) -> Result<usize, diesel::result::Error> {
+    let mut salt = [0_u8; 16];
+    rand::rng().fill_bytes(&mut salt);
+
     // Hash the password using Argon2
     let hashed_password = argon2::hash_encoded(
         _password.as_bytes(),
-        b"randomsalt",
+        &salt,
         &argon2::Config::default(),
     )
     .map_err(|_| diesel::result::Error::RollbackTransaction)?;
