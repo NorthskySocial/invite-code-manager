@@ -66,8 +66,8 @@ pub async fn login_user(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::apis::list_admins::list_admins_handler;
     use crate::LoginUser;
+    use crate::apis::list_admins::list_admins_handler;
     use crate::db::create_invite_code_admin;
     use axum::{
         Router,

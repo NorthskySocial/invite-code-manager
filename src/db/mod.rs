@@ -118,12 +118,9 @@ pub fn build_invite_code_admin(
     let mut salt = [0_u8; 16];
     rand::rng().fill_bytes(&mut salt);
 
-    let hashed_password = argon2::hash_encoded(
-        password.as_bytes(),
-        &salt,
-        &argon2::Config::default(),
-    )
-    .map_err(|_| diesel::result::Error::RollbackTransaction)?;
+    let hashed_password =
+        argon2::hash_encoded(password.as_bytes(), &salt, &argon2::Config::default())
+            .map_err(|_| diesel::result::Error::RollbackTransaction)?;
 
     Ok(InviteCodeAdmin {
         username: username.to_string(),
