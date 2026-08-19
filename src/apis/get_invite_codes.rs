@@ -12,6 +12,7 @@ use std::collections::HashMap;
 struct AccountInfo {
     did: String,
     handle: String,
+    email: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -95,6 +96,7 @@ pub async fn get_invite_codes_handler(
     account_dids.dedup();
 
     let mut did_to_handle = HashMap::new();
+    let mut did_to_email = HashMap::new();
     if !account_dids.is_empty() {
         // Chunk DIDs to avoid too long query string if there are many
         for chunk in account_dids.chunks(100) {
@@ -117,6 +119,7 @@ pub async fn get_invite_codes_handler(
                 && let Ok(infos) = res.json::<AccountInfosResponse>().await
             {
                 for account in infos.accounts {
+                    did_to_email.insert(account.did.clone(), account.email);
                     did_to_handle.insert(account.did, account.handle);
                 }
             }
@@ -127,6 +130,7 @@ pub async fn get_invite_codes_handler(
         code.for_account_handle = did_to_handle.get(&code.for_account).cloned();
         for usage in &mut code.uses {
             usage.used_by_handle = did_to_handle.get(&usage.used_by).cloned();
+            usage.used_by_email = did_to_email.get(&usage.used_by).cloned().flatten();
         }
     }
 
@@ -140,14 +144,16 @@ pub async fn get_invite_codes_handler(
 mod tests {
     use super::*;
     use crate::config::Config;
+    use crate::db::create_invite_code_admin;
     use axum::{
         Router,
-        body::Body,
+        body::{Body, to_bytes},
         http::{Request, StatusCode},
-        routing::get,
+        routing::{get, post},
     };
     use diesel::RunQueryDsl;
     use tower::ServiceExt;
+    use tower_sessions::Session;
 
     type TestDBPool = deadpool_diesel::sqlite::Pool;
 
@@ -180,6 +186,79 @@ mod tests {
         .expect("Failed to create test table");
 
         pool
+    }
+
+    fn session_cookie(resp: &axum::response::Response) -> Option<String> {
+        resp.headers()
+            .get_all("set-cookie")
+            .iter()
+            .filter_map(|v| v.to_str().ok())
+            .find_map(|cookie| cookie.split(';').next().map(|s| s.to_string()))
+    }
+
+    async fn seed_session(session: Session) -> Result<StatusCode, AppError> {
+        session
+            .insert("username", "testadmin")
+            .await
+            .map_err(|e| AppError::InternalError(format!("Session error: {:?}", e)))?;
+        Ok(StatusCode::NO_CONTENT)
+    }
+
+    async fn mock_invite_codes_handler() -> Json<serde_json::Value> {
+        Json(serde_json::json!({
+            "codes": [
+                {
+                    "code": "northsky-123",
+                    "available": 0,
+                    "disabled": false,
+                    "forAccount": "did:plc:owner",
+                    "createdBy": "admin",
+                    "createdAt": "2026-08-19T00:00:00.000Z",
+                    "uses": [
+                        {
+                            "usedBy": "did:plc:claimer",
+                            "usedAt": "2026-08-19T01:00:00.000Z"
+                        }
+                    ]
+                }
+            ]
+        }))
+    }
+
+    async fn mock_account_infos_handler() -> Json<serde_json::Value> {
+        Json(serde_json::json!({
+            "accounts": [
+                {
+                    "did": "did:plc:owner",
+                    "handle": "owner.test",
+                    "email": "owner@example.com"
+                },
+                {
+                    "did": "did:plc:claimer",
+                    "handle": "claimer.test",
+                    "email": "claimer@example.com"
+                }
+            ]
+        }))
+    }
+
+    async fn mock_pds_endpoint() -> String {
+        let app = Router::new()
+            .route(GET_INVITE_CODES, get(mock_invite_codes_handler))
+            .route(GET_ACCOUNT_INFOS, get(mock_account_infos_handler));
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("Failed to bind mock PDS");
+        let addr = listener.local_addr().expect("Failed to get mock PDS addr");
+
+        tokio::spawn(async move {
+            axum::serve(listener, app)
+                .await
+                .expect("Mock PDS server failed");
+        });
+
+        format!("http://{}", addr)
     }
 
     #[tokio::test]
@@ -229,5 +308,76 @@ mod tests {
 
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_get_invite_codes_includes_used_by_email() {
+        let pool = setup_test_db("get_invite_with_email").await;
+        let db_conn = crate::DbConn(pool.clone());
+        create_invite_code_admin(&db_conn, "testadmin", "password")
+            .await
+            .expect("Failed to create test admin");
+
+        let config = Config {
+            pds_admin_password: "pds_password".to_string(),
+            pds_endpoint: mock_pds_endpoint().await,
+        };
+
+        #[derive(Clone)]
+        struct TestState {
+            db_pool: TestDBPool,
+            config: Config,
+        }
+
+        impl axum::extract::FromRef<TestState> for crate::apis::DBPool {
+            fn from_ref(state: &TestState) -> crate::apis::DBPool {
+                crate::DbConn(state.db_pool.clone())
+            }
+        }
+
+        impl axum::extract::FromRef<TestState> for Config {
+            fn from_ref(state: &TestState) -> Config {
+                state.config.clone()
+            }
+        }
+
+        let state = TestState {
+            db_pool: pool,
+            config,
+        };
+
+        let app = Router::new()
+            .route("/test/seed-session", post(seed_session))
+            .route("/invite-codes", get(get_invite_codes_handler))
+            .with_state(state)
+            .layer(tower_sessions::SessionManagerLayer::new(
+                tower_sessions::MemoryStore::default(),
+            ));
+
+        let seed_req = Request::builder()
+            .method("POST")
+            .uri("/test/seed-session")
+            .body(Body::empty())
+            .unwrap();
+        let seed_resp = app.clone().oneshot(seed_req).await.unwrap();
+        let cookie = session_cookie(&seed_resp).expect("Expected a session cookie");
+
+        let req = Request::builder()
+            .method("GET")
+            .uri("/invite-codes")
+            .header("cookie", cookie)
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let invite_codes: InviteCodes = serde_json::from_slice(&body).unwrap();
+        let usage = &invite_codes.codes[0].uses[0];
+
+        assert_eq!(usage.used_by, "did:plc:claimer");
+        assert_eq!(usage.used_by_handle.as_deref(), Some("claimer.test"));
+        assert_eq!(usage.used_by_email.as_deref(), Some("claimer@example.com"));
     }
 }
