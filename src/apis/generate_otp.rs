@@ -4,7 +4,6 @@ use crate::error::AppError;
 use crate::user::InviteCodeAdmin;
 use axum::extract::State;
 use axum::{Json, response::IntoResponse};
-use rand::Rng;
 use serde::Serialize;
 use totp_rs::{Algorithm, Secret, TOTP};
 use utoipa::ToSchema;
@@ -37,18 +36,12 @@ pub async fn generate_otp_handler(
         return Err(AppError::InternalError("OTP already verified".to_string()));
     }
 
-    let base32_string = {
-        let mut rng = rand::rng();
-        let data_byte: [u8; 21] = rng.random();
-        base32::encode(base32::Alphabet::Rfc4648 { padding: false }, &data_byte)
-    };
-
     let totp = TOTP::new(
         Algorithm::SHA1,
         6,
         1,
         30,
-        Secret::Encoded(base32_string)
+        Secret::generate_secret()
             .to_bytes()
             .map_err(|e| AppError::InternalError(e.to_string()))?,
     )
