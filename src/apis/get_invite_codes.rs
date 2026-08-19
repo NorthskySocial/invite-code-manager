@@ -17,7 +17,7 @@ struct AccountInfo {
 
 #[derive(Deserialize, Serialize, Debug)]
 struct AccountInfosResponse {
-    accounts: Vec<AccountInfo>,
+    infos: Vec<AccountInfo>,
 }
 
 #[tracing::instrument(skip(config, _invite_code_admin), fields(user_id = %_invite_code_admin.username
@@ -118,7 +118,7 @@ pub async fn get_invite_codes_handler(
             if res.status().is_success()
                 && let Ok(infos) = res.json::<AccountInfosResponse>().await
             {
-                for account in infos.accounts {
+                for account in infos.infos {
                     did_to_email.insert(account.did.clone(), account.email);
                     did_to_handle.insert(account.did, account.handle);
                 }
@@ -227,7 +227,7 @@ mod tests {
 
     async fn mock_account_infos_handler() -> Json<serde_json::Value> {
         Json(serde_json::json!({
-            "accounts": [
+            "infos": [
                 {
                     "did": "did:plc:owner",
                     "handle": "owner.test",
