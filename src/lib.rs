@@ -35,7 +35,6 @@ pub const GET_INVITE_CODES: &str = "/xrpc/com.atproto.admin.getInviteCodes";
 pub const DISABLE_INVITE_CODES: &str = "/xrpc/com.atproto.admin.disableInviteCodes";
 pub const CREATE_INVITE_CODES: &str = "/xrpc/com.atproto.server.createInviteCodes";
 pub const GET_ACCOUNT_INFOS: &str = "/xrpc/com.atproto.admin.getAccountInfos";
-pub const GET_ACCOUNT_INFO: &str = "/xrpc/com.atproto.admin.getAccountInfo";
 
 #[cfg(test)]
 mod tests {
