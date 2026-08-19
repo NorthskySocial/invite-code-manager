@@ -3,7 +3,7 @@ FROM rust:latest@sha256:1bcff4befb740599103a2c7cb51058e14479b2e35e3a34a3f0dc4ede
 # Copy local code to the container image.
 WORKDIR /app
 
-COPY Cargo.toml rust-toolchain.toml ./
+COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY src src
 
 RUN cargo build --release
