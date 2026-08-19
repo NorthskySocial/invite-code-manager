@@ -127,14 +127,14 @@ Typical test setup includes:
 ├── migrations/         # Database migrations (Diesel)
 ├── src/                # Source code
 │   ├── apis/           # Axum request handlers and route definitions
-│   ├── auth/           # Authentication logic (TOTP, Sessions)
 │   ├── db/             # Database connection and utilities
-│   ├── models/         # Data models and schemas
 │   ├── cli.rs          # CLI command implementations
 │   ├── config.rs       # Configuration loading from environment variables
+│   ├── error.rs        # Error types and HTTP status mapping
 │   ├── main.rs         # Application entry point
 │   ├── schema.rs       # Auto-generated Diesel schema
-│   └── state.rs        # Shared application state
+│   ├── state.rs        # Shared application state
+│   └── user.rs         # Admin model and session extractors
 ├── tests/              # Integration tests
 └── README.md           # Project documentation
 ```
