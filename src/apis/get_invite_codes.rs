@@ -123,7 +123,8 @@ pub async fn get_invite_codes_handler(
             {
                 for account in infos.infos {
                     did_to_email.insert(account.did.clone(), account.email);
-                    did_to_deactivated.insert(account.did.clone(), account.deactivated_at.is_some());
+                    did_to_deactivated
+                        .insert(account.did.clone(), account.deactivated_at.is_some());
                     did_to_handle.insert(account.did, account.handle);
                 }
             }
