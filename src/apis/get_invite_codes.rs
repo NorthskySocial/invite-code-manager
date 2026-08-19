@@ -13,6 +13,8 @@ struct AccountInfo {
     did: String,
     handle: String,
     email: Option<String>,
+    #[serde(rename = "deactivatedAt")]
+    deactivated_at: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -97,6 +99,7 @@ pub async fn get_invite_codes_handler(
 
     let mut did_to_handle = HashMap::new();
     let mut did_to_email = HashMap::new();
+    let mut did_to_deactivated = HashMap::new();
     if !account_dids.is_empty() {
         // Chunk DIDs to avoid too long query string if there are many
         for chunk in account_dids.chunks(100) {
@@ -120,6 +123,8 @@ pub async fn get_invite_codes_handler(
             {
                 for account in infos.infos {
                     did_to_email.insert(account.did.clone(), account.email);
+                    did_to_deactivated
+                        .insert(account.did.clone(), account.deactivated_at.is_some());
                     did_to_handle.insert(account.did, account.handle);
                 }
             }
@@ -131,6 +136,7 @@ pub async fn get_invite_codes_handler(
         for usage in &mut code.uses {
             usage.used_by_handle = did_to_handle.get(&usage.used_by).cloned();
             usage.used_by_email = did_to_email.get(&usage.used_by).cloned().flatten();
+            usage.used_by_deactivated = did_to_deactivated.get(&usage.used_by).copied();
         }
     }
 
@@ -236,7 +242,8 @@ mod tests {
                 {
                     "did": "did:plc:claimer",
                     "handle": "claimer.test",
-                    "email": "claimer@example.com"
+                    "email": "claimer@example.com",
+                    "deactivatedAt": "2026-08-01T00:00:00.000Z"
                 }
             ]
         }))
@@ -379,5 +386,6 @@ mod tests {
         assert_eq!(usage.used_by, "did:plc:claimer");
         assert_eq!(usage.used_by_handle.as_deref(), Some("claimer.test"));
         assert_eq!(usage.used_by_email.as_deref(), Some("claimer@example.com"));
+        assert_eq!(usage.used_by_deactivated, Some(true));
     }
 }
