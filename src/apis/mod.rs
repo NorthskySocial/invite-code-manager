@@ -39,6 +39,8 @@ pub struct Use {
     pub used_by: String,
     #[serde(rename = "usedByHandle")]
     pub used_by_handle: Option<String>,
+    #[serde(rename = "usedByEmail")]
+    pub used_by_email: Option<String>,
     #[serde(rename = "usedAt")]
     pub used_at: String,
 }
