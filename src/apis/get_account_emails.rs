@@ -19,7 +19,7 @@ pub struct AccountEmailsResponse {
 
 #[derive(Deserialize)]
 struct PdsAccountInfos {
-    accounts: Vec<PdsAccountInfo>,
+    infos: Vec<PdsAccountInfo>,
 }
 
 #[derive(Deserialize)]
@@ -81,7 +81,7 @@ pub async fn get_account_emails_handler(
     })?;
 
     let mut emails = HashMap::new();
-    for account in pds_infos.accounts {
+    for account in pds_infos.infos {
         emails.insert(account.did, account.email);
     }
 
