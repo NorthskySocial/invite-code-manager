@@ -17,12 +17,7 @@ totp-rs = { version = "5.4.0", features = ["gen_secret"] }
 reqwest = { version = "0.13.1", default-features = false, features = [
     "json",
     "query",
-    "rustls-no-provider",
-] }
-rustls = { version = "0.23", default-features = false, features = [
-    "ring",
-    "std",
-    "tls12",
+    "rustls",
 ] }
 rpassword = "7.4.0"
 rust-argon2 = "3.0.0"

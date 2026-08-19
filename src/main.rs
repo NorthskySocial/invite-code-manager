@@ -82,7 +82,9 @@ impl utoipa::Modify for SecurityAddon {
 #[tokio::main]
 async fn main() {
     dotenv().ok();
-    env_logger::init();
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .init();
 
     // Get Environment Variables
     let pds_admin_password =
