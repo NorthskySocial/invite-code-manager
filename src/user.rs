@@ -1,6 +1,5 @@
 use crate::db::fetch_invite_code_admin;
 use crate::{DbConn, error::AppError};
-use axum::async_trait;
 use axum::extract::{FromRef, FromRequestParts};
 use axum::http::request::Parts;
 use diesel::{Insertable, Queryable, Selectable};
@@ -21,7 +20,6 @@ pub struct InviteCodeAdmin {
     pub otp_verified: i32,
 }
 
-#[async_trait]
 impl<S> FromRequestParts<S> for InviteCodeAdmin
 where
     DbConn: FromRef<S>,
@@ -85,7 +83,6 @@ impl From<InviteCodeAdmin> for InviteCodeAdminPreLogin {
     }
 }
 
-#[async_trait]
 impl<S> FromRequestParts<S> for InviteCodeAdminPreLogin
 where
     DbConn: FromRef<S>,

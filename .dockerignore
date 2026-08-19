@@ -1,0 +1,12 @@
+target/
+.git/
+.github/
+.env
+*.sqlite
+database/
+migrations/
+tests/
+README.md
+.gitignore
+.dockerignore
+Dockerfile
