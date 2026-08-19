@@ -4,26 +4,40 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-env_logger = "0.11.7"
-tokio = { version = "1.38.0", features = ["full"] }
-axum = { version = "0.7.5", features = ["macros"] }
-tower = { version = "0.4.13", features = ["util"] }
-tower-http = { version = "0.5.2", features = ["cors", "trace", "fs"] }
-tower-sessions = { version = "0.12.2", features = ["signed"] }
+tokio = { version = "1.38.0", features = ["rt-multi-thread", "macros", "net"] }
+axum = "0.8.4"
+tower-http = { version = "0.6.2", features = ["cors"] }
+tower-sessions = { version = "0.15.0", features = ["signed"] }
 serde = { version = "1.0.204", features = ["derive"] }
 dotenvy = "0.15.7"
-diesel = { version = "2.2.2", features = ["sqlite", "r2d2"] }
+diesel = { version = "2.2.2", features = ["sqlite"] }
 deadpool-diesel = { version = "0.6.1", features = ["sqlite"] }
 rand = "0.9.2"
-totp-rs = "5.4.0"
-base32 = "0.5.1"
-serde_json = "1.0.91"
-reqwest = { version = "0.13.1", features = ["json", "query"] }
+totp-rs = { version = "5.4.0", features = ["gen_secret"] }
+reqwest = { version = "0.13.1", default-features = false, features = [
+    "json",
+    "query",
+    "rustls",
+] }
 rpassword = "7.4.0"
 rust-argon2 = "3.0.0"
 tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 utoipa = { version = "5.3.1", features = ["axum_extras"] }
-utoipa-swagger-ui = { version = "9.0.0", features = ["axum"] }
+utoipa-swagger-ui = { version = "9.0.0", default-features = false, features = [
+    "axum",
+    "vendored",
+] }
+
+[dev-dependencies]
+serde_json = "1.0.91"
+tower = { version = "0.5.2", features = ["util"] }
+
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.release]
+strip = "symbols"
 
 [package.metadata.tarpaulin]
 exclude-files = [

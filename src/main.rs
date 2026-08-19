@@ -18,7 +18,9 @@ use std::net::SocketAddr;
 use tower_http::cors::{Any, CorsLayer};
 use tower_sessions::cookie::SameSite;
 use tower_sessions::{MemoryStore, SessionManagerLayer};
+use tracing_subscriber::EnvFilter;
 use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 
 #[derive(OpenApi)]
 #[openapi(
@@ -57,10 +59,8 @@ use utoipa::OpenApi;
     ),
     modifiers(&SecurityAddon)
 )]
-#[allow(dead_code)]
 struct ApiDoc;
 
-#[allow(dead_code)]
 struct SecurityAddon;
 
 impl utoipa::Modify for SecurityAddon {
@@ -80,7 +80,9 @@ impl utoipa::Modify for SecurityAddon {
 #[tokio::main]
 async fn main() {
     dotenv().ok();
-    env_logger::init();
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .init();
 
     // Get Environment Variables
     let pds_admin_password =
@@ -201,7 +203,8 @@ async fn main() {
         .route("/create-invite-codes", post(create_invite_codes_handler))
         .route("/invite-codes", get(get_invite_codes_handler))
         .route("/disable-invite-codes", post(disable_invite_codes_handler))
-        .with_state(app_state);
+        .with_state(app_state)
+        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()));
 
     let app = app.layer(session_layer).layer(cors);
 
