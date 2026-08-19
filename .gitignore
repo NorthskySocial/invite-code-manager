@@ -1,7 +1,6 @@
 /target
 .env
 database.sqlite
-Cargo.lock
 
 /invitemanager.sqlite
 /database
