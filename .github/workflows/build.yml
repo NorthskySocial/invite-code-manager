@@ -46,13 +46,20 @@ jobs:
         run: |
           rustc -vV
           cargo -vV
+      - name: "Cache Rust build"
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: "Install Tarpaulin"
-        run: cargo install cargo-tarpaulin
-      - name: "Run Tests"
+        uses: taiki-e/install-action@5b4d68e2e660441203ab128a23676f1e4faf1532 # v2.86.3
+        with:
+          tool: cargo-tarpaulin
+      - name: "Run Formatter"
+        id: formatting
+        run: cargo fmt -- --check
+      - name: "Run Clippy"
+        id: clippy
+        run: cargo clippy --all-targets -- -D warnings
+      - name: "Run Tests and Coverage"
         id: tests
-        run: cargo test
-      - name: "Run Coverage"
-        id: coverage
         run: cargo tarpaulin --out xml --out html
       - name: "Upload Coverage"
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -61,12 +68,6 @@ jobs:
           path: |
             tarpaulin-report.xml
             tarpaulin-report.html
-      - name: "Run Clippy"
-        id: clippy
-        run: cargo clippy -- -D warnings
-      - name: "Run Formatter"
-        id: formatting
-        run: cargo fmt -- --check
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
       - name: Build and push Docker image
@@ -77,6 +78,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
       - name: "Some checks failed"
         if: ${{ failure() }}
         run: |
