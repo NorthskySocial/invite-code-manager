@@ -43,6 +43,7 @@ pub async fn setup_app(db_pool: DBPool) -> Router {
     let config = Config {
         pds_admin_password: "test_password".to_string(),
         pds_endpoint: "http://test-endpoint".to_string(),
+        access: None,
     };
 
     #[derive(Clone)]

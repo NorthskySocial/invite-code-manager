@@ -1,6 +1,7 @@
 extern crate alloc;
 extern crate core;
 
+pub mod access;
 pub mod apis;
 pub mod cli;
 pub mod config;
@@ -32,6 +33,9 @@ pub struct LoginUser {
 pub const GET_INVITE_CODES: &str = "/xrpc/com.atproto.admin.getInviteCodes";
 pub const DISABLE_INVITE_CODES: &str = "/xrpc/com.atproto.admin.disableInviteCodes";
 pub const CREATE_INVITE_CODES: &str = "/xrpc/com.atproto.server.createInviteCodes";
+/// Singular form. Unlike the plural endpoint it returns the code it created,
+/// which is what lets a caller hand one to a specific applicant.
+pub const CREATE_INVITE_CODE: &str = "/xrpc/com.atproto.server.createInviteCode";
 pub const GET_ACCOUNT_INFOS: &str = "/xrpc/com.atproto.admin.getAccountInfos";
 
 #[cfg(test)]
@@ -81,6 +85,7 @@ mod tests {
         let config = config::Config {
             pds_admin_password: "test_password".to_string(),
             pds_endpoint: "http://test-endpoint".to_string(),
+            access: None,
         };
         assert_eq!(config.pds_admin_password, "test_password");
         assert_eq!(config.pds_endpoint, "http://test-endpoint");
