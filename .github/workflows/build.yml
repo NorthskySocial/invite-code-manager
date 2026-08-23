@@ -122,7 +122,7 @@ jobs:
         with:
           token: ${{ secrets.DEPLOYMENT_WEBHOOK_TOKEN }}
           repository: ${{ secrets.DEPLOYMENT_WEBHOOK_REPOSITORY }}
-          event-type: restart-migration-fe
+          event-type: restart-invite-code-manager
 
   notify_deployment:
     runs-on: ubuntu-latest
