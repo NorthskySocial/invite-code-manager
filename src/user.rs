@@ -133,6 +133,26 @@ pub struct CreateInviteCodeSchema {
     pub use_count: i32,
 }
 
+/// Request for the single-code endpoint.
+#[derive(Serialize, Deserialize, ToSchema)]
+pub struct IssueInviteCodeSchema {
+    /// How many accounts the code may create. Defaults to 1.
+    #[serde(rename = "useCount", default = "default_use_count")]
+    pub use_count: i32,
+}
+
+const fn default_use_count() -> i32 {
+    1
+}
+
+/// The created code, returned so the caller can hand it to one applicant.
+#[derive(Serialize, Deserialize, ToSchema)]
+pub struct IssueInviteCodeResponse {
+    pub code: String,
+    #[serde(rename = "useCount")]
+    pub use_count: i32,
+}
+
 #[derive(Serialize, Deserialize, ToSchema)]
 pub struct CreateInviteCodeResponseSchema {
     pub account: String,
@@ -143,4 +163,44 @@ pub struct CreateInviteCodeResponseSchema {
 pub struct DisableInviteCodeSchema {
     pub codes: Vec<String>,
     pub accounts: Vec<String>,
+}
+
+/// A caller authenticated by Cloudflare Access.
+///
+/// Used by the machine-facing endpoints instead of the session cookie the
+/// browser-facing ones rely on. Extraction fails closed: if Access is not
+/// configured, no request is authenticated, rather than the endpoint quietly
+/// accepting anything that can reach the origin.
+#[derive(Debug, Clone)]
+pub struct AccessClient(pub crate::access::AccessClaims);
+
+impl<S> FromRequestParts<S> for AccessClient
+where
+    crate::config::Config: FromRef<S>,
+    S: Send + Sync,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let config = crate::config::Config::from_ref(state);
+
+        let access = config.access.as_ref().ok_or_else(|| {
+            AppError::AuthError(
+                "Cloudflare Access is not configured on this deployment".to_string(),
+            )
+        })?;
+
+        // Injected by Access itself and signed by the team's keys. The
+        // Cf-Access-Client-Id header is not used: anything able to reach the
+        // origin directly could set it.
+        let token = parts
+            .headers
+            .get("cf-access-jwt-assertion")
+            .and_then(|v| v.to_str().ok())
+            .ok_or_else(|| {
+                AppError::AuthError("Request did not arrive through Cloudflare Access".to_string())
+            })?;
+
+        Ok(Self(access.verify(token).await?))
+    }
 }

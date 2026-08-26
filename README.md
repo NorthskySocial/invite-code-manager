@@ -40,6 +40,9 @@ environment:
 | `SERVER_PORT`           | Port the server listens on                                                  | No       | `9090`  |
 | `ALLOWED_ORIGIN`        | CORS allowed origin (`*` or a specific origin like `https://app.example`) | No       | `*`     |
 | `SESSION_COOKIE_SECURE` | Whether session cookies require HTTPS (`true` or `false`)                 | No       | `true`  |
+| `CF_ACCESS_TEAM_DOMAIN` | Cloudflare Access team domain, e.g. `https://acme.cloudflareaccess.com`     | For `/invite-codes/issue` | - |
+| `CF_ACCESS_AUD`         | AUD tag of the Access application in front of this service                  | For `/invite-codes/issue` | - |
+| `CF_ACCESS_ALLOWED_SERVICE_TOKENS` | Comma-separated service token names allowed to issue codes       | No       | any     |
 
 Example `.env`:
 
@@ -89,6 +92,45 @@ The application provides CLI commands for administrative tasks:
   ```bash
   cargo run -- list-users
   ```
+
+## Machine access
+
+`POST /invite-codes/issue` creates a **single** invite code and returns it:
+
+```json
+{ "code": "your-pds-abc12-xyz34", "useCount": 1 }
+```
+
+`POST /create-invite-codes` calls the PDS's plural endpoint, which reports only
+success. A caller that needs the code for one specific person therefore has to
+list every code on the PDS and diff against what it saw before — expensive, and
+racy when two callers create codes at the same time. The singular endpoint
+returns what it made, so one call is enough.
+
+It authenticates through **Cloudflare Access** rather than the session cookie
+the browser-facing endpoints use, because a service calling on a schedule should
+not be holding an admin password.
+
+### Setting it up
+
+1. Put this service behind an Access application.
+2. Create a **service token** (Access > Service Auth) for the caller.
+3. Add a policy on the application allowing that service token.
+4. Set `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` (Access > Applications >
+   Overview) and restart.
+
+Callers send the token as `CF-Access-Client-Id` and `CF-Access-Secret` headers;
+Access validates it and injects a signed `Cf-Access-Jwt-Assertion`, which this
+service verifies against your team's public keys — signature, audience and
+expiry. The `CF-Access-Client-Id` header is deliberately *not* trusted on its
+own: anything able to reach the origin directly could set it.
+
+Optionally narrow further with `CF_ACCESS_ALLOWED_SERVICE_TOKENS`, a
+comma-separated list of service token names.
+
+> The endpoint refuses every request unless both `CF_ACCESS_TEAM_DOMAIN` and
+> `CF_ACCESS_AUD` are set. A half-configured auth path fails closed rather than
+> becoming an open one.
 
 ## API Documentation
 

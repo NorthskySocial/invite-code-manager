@@ -99,6 +99,7 @@ mod tests {
         let config = Config {
             pds_admin_password: "pds_password".to_string(),
             pds_endpoint: "http://localhost".to_string(),
+            access: None,
         };
 
         #[derive(Clone)]

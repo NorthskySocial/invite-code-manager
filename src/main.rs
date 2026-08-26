@@ -5,10 +5,12 @@ use axum::{
     routing::{get, post},
 };
 use dotenvy::dotenv;
+use invite_code_manager::access::AccessConfig;
 use invite_code_manager::apis::{
     add_admin_handler, create_invite_codes_handler, disable_invite_codes_handler,
-    generate_otp_handler, get_invite_codes_handler, healthcheck_handler, list_admins_handler,
-    login_user, remove_admin_handler, validate_otp_handler, verify_otp_handler,
+    generate_otp_handler, get_invite_codes_handler, healthcheck_handler, issue_invite_code_handler,
+    list_admins_handler, login_user, remove_admin_handler, validate_otp_handler,
+    verify_otp_handler,
 };
 use invite_code_manager::config::Config;
 use invite_code_manager::state::AppState;
@@ -34,6 +36,7 @@ use utoipa_swagger_ui::SwaggerUi;
         invite_code_manager::apis::verify_otp::verify_otp_handler,
         invite_code_manager::apis::validate_otp::validate_otp_handler,
         invite_code_manager::apis::create_invite_codes::create_invite_codes_handler,
+        invite_code_manager::apis::issue_invite_code::issue_invite_code_handler,
         invite_code_manager::apis::get_invite_codes::get_invite_codes_handler,
         invite_code_manager::apis::disable_invite_codes::disable_invite_codes_handler,
     ),
@@ -43,6 +46,8 @@ use utoipa_swagger_ui::SwaggerUi;
             invite_code_manager::user::InviteCodeAdminData,
             invite_code_manager::user::VerifyOTPSchema,
             invite_code_manager::user::CreateInviteCodeSchema,
+            invite_code_manager::user::IssueInviteCodeSchema,
+            invite_code_manager::user::IssueInviteCodeResponse,
             invite_code_manager::user::DisableInviteCodeSchema,
             invite_code_manager::apis::Code,
             invite_code_manager::apis::Use,
@@ -71,6 +76,14 @@ impl utoipa::Modify for SecurityAddon {
             utoipa::openapi::security::SecurityScheme::ApiKey(
                 utoipa::openapi::security::ApiKey::Cookie(
                     utoipa::openapi::security::ApiKeyValue::new("invite_manager_session"),
+                ),
+            ),
+        );
+        components.add_security_scheme(
+            "cloudflare_access",
+            utoipa::openapi::security::SecurityScheme::ApiKey(
+                utoipa::openapi::security::ApiKey::Header(
+                    utoipa::openapi::security::ApiKeyValue::new("Cf-Access-Jwt-Assertion"),
                 ),
             ),
         )
@@ -150,10 +163,44 @@ async fn main() {
         }
     }
 
+    // Cloudflare Access, for machine callers. Both variables are required
+    // together: configuring one without the other would leave the endpoint
+    // half-wired, so it stays disabled until both are present.
+    let access = match (
+        env::var("CF_ACCESS_TEAM_DOMAIN")
+            .ok()
+            .filter(|v| !v.is_empty()),
+        env::var("CF_ACCESS_AUD").ok().filter(|v| !v.is_empty()),
+    ) {
+        (Some(team_domain), Some(aud)) => {
+            let allowed: Vec<String> = env::var("CF_ACCESS_ALLOWED_SERVICE_TOKENS")
+                .unwrap_or_default()
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+
+            tracing::info!(
+                "[Invite Code Manager] Cloudflare Access enabled for {} ({} service token(s) allowlisted)",
+                team_domain,
+                allowed.len()
+            );
+            Some(AccessConfig::new(team_domain, aud, allowed))
+        }
+        _ => {
+            tracing::warn!(
+                "[Invite Code Manager] CF_ACCESS_TEAM_DOMAIN/CF_ACCESS_AUD unset — \
+                 /invite-codes/issue will refuse all requests"
+            );
+            None
+        }
+    };
+
     // Setup Config
     let config = Config {
         pds_admin_password,
         pds_endpoint,
+        access,
     };
 
     // Start Http Server
@@ -201,6 +248,7 @@ async fn main() {
         .route("/auth/otp/verify", post(verify_otp_handler))
         .route("/auth/otp/validate", post(validate_otp_handler))
         .route("/create-invite-codes", post(create_invite_codes_handler))
+        .route("/invite-codes/issue", post(issue_invite_code_handler))
         .route("/invite-codes", get(get_invite_codes_handler))
         .route("/disable-invite-codes", post(disable_invite_codes_handler))
         .with_state(app_state)
