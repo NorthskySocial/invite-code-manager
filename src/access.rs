@@ -71,7 +71,10 @@ pub struct AccessClaims {
     /// Set for a *user* login; absent for a service token.
     #[serde(default)]
     pub email: Option<String>,
-    /// Set for a *service token*; carries the token's name.
+    /// Set for a *service token*: the token's **Client ID**
+    /// (`CF-Access-Client-Id`), not the human-readable name it was given in
+    /// the dashboard. `CF_ACCESS_ALLOWED_SERVICE_TOKENS` is matched against
+    /// this, so it must be filled with Client IDs.
     #[serde(default)]
     pub common_name: Option<String>,
 }
@@ -104,7 +107,9 @@ pub struct AccessConfig {
     pub team_domain: String,
     /// The Access application's AUD tag.
     pub aud: String,
-    /// Optional allowlist of service token names. Empty means any principal
+    /// Optional allowlist of service token **Client IDs** — the value Access
+    /// puts in `common_name`, not the token's dashboard name. Empty means any
+    /// principal
     /// Access lets through is accepted, which is usually what the Access policy
     /// is already for.
     pub allowed_service_tokens: Vec<String>,
@@ -218,6 +223,21 @@ mod tests {
             "aud-tag".to_string(),
             vec![],
         )
+    }
+
+    #[test]
+    fn the_allowlist_matches_a_service_token_client_id() {
+        // Access sets `common_name` to the service token's Client ID, not the
+        // name it was given in the dashboard. Getting that backwards puts a
+        // plausible-looking value in the allowlist that can never match, and
+        // the resulting rejection names a token that looks correct.
+        let claims: AccessClaims = serde_json::from_str(
+            r#"{"aud":["tag"],"iss":"https://team.cloudflareaccess.com","exp":9999999999,
+                "sub":"","common_name":"1234abcd.access"}"#,
+        )
+        .expect("service token claims must deserialize");
+
+        assert_eq!(claims.subject(), "1234abcd.access");
     }
 
     #[test]
