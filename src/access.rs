@@ -226,8 +226,13 @@ mod tests {
         // token, and the one that broke the first real request through Access:
         // it failed while parsing the claims, so a perfectly valid token was
         // reported as "Invalid Access token".
+        //
+        // The audience here is a placeholder. A real AUD tag is not a
+        // credential — it identifies an Access application and cannot mint or
+        // forge anything — but it is deployment configuration, and this
+        // repository is public.
         let claims: AccessClaims = serde_json::from_str(
-            r#"{"aud":"0fbf6f198910584758aa5c42453a1a8aa90115e2f0de619c41e2bb9056e04ca0",
+            r#"{"aud":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 "iss":"https://team.cloudflareaccess.com","exp":9999999999,
                 "common_name":"vetting-worker"}"#,
         )
@@ -235,7 +240,7 @@ mod tests {
 
         assert_eq!(
             claims.aud,
-            vec!["0fbf6f198910584758aa5c42453a1a8aa90115e2f0de619c41e2bb9056e04ca0"]
+            vec!["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]
         );
         assert_eq!(claims.subject(), "vetting-worker");
     }
