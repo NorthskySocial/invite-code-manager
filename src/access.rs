@@ -29,10 +29,41 @@ type CachedKeys = Arc<RwLock<Option<(Instant, Vec<Jwk>)>>>;
 /// every request.
 const JWKS_TTL: Duration = Duration::from_secs(3600);
 
+/// One or many, as JWT audiences are allowed to be.
+///
+/// RFC 7519 §4.1.3 permits `aud` to be either a single string or an array of
+/// them, and Cloudflare Access uses the string form when a token is scoped to
+/// one application — which is the normal case here. Typing the field as a
+/// `Vec<String>` therefore failed to deserialize against real tokens, and
+/// because it failed while parsing the claims it surfaced as
+/// "Invalid Access token", which reads like a rejected credential rather than
+/// a shape this code declined to accept.
+fn one_or_many_audience<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum OneOrMany {
+        One(String),
+        Many(Vec<String>),
+    }
+
+    Ok(match OneOrMany::deserialize(deserializer)? {
+        OneOrMany::One(aud) => vec![aud],
+        OneOrMany::Many(auds) => auds,
+    })
+}
+
 /// Claims we care about from an Access JWT.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AccessClaims {
     /// Access application audience tag.
+    ///
+    /// Normalised to a list on the way in; see `one_or_many_audience`. The
+    /// audience is still *checked* by `Validation::set_audience`, not here —
+    /// this field exists so the claims deserialize at all.
+    #[serde(deserialize_with = "one_or_many_audience")]
     pub aud: Vec<String>,
     /// Issuer — the team domain.
     pub iss: String,
@@ -40,7 +71,10 @@ pub struct AccessClaims {
     /// Set for a *user* login; absent for a service token.
     #[serde(default)]
     pub email: Option<String>,
-    /// Set for a *service token*; carries the token's name.
+    /// Set for a *service token*: the token's **Client ID**
+    /// (`CF-Access-Client-Id`), not the human-readable name it was given in
+    /// the dashboard. `CF_ACCESS_ALLOWED_SERVICE_TOKENS` is matched against
+    /// this, so it must be filled with Client IDs.
     #[serde(default)]
     pub common_name: Option<String>,
 }
@@ -73,7 +107,9 @@ pub struct AccessConfig {
     pub team_domain: String,
     /// The Access application's AUD tag.
     pub aud: String,
-    /// Optional allowlist of service token names. Empty means any principal
+    /// Optional allowlist of service token **Client IDs** — the value Access
+    /// puts in `common_name`, not the token's dashboard name. Empty means any
+    /// principal
     /// Access lets through is accepted, which is usually what the Access policy
     /// is already for.
     pub allowed_service_tokens: Vec<String>,
@@ -187,6 +223,66 @@ mod tests {
             "aud-tag".to_string(),
             vec![],
         )
+    }
+
+    #[test]
+    fn the_allowlist_matches_a_service_token_client_id() {
+        // Access sets `common_name` to the service token's Client ID, not the
+        // name it was given in the dashboard. Getting that backwards puts a
+        // plausible-looking value in the allowlist that can never match, and
+        // the resulting rejection names a token that looks correct.
+        let claims: AccessClaims = serde_json::from_str(
+            r#"{"aud":["tag"],"iss":"https://team.cloudflareaccess.com","exp":9999999999,
+                "sub":"","common_name":"1234abcd.access"}"#,
+        )
+        .expect("service token claims must deserialize");
+
+        assert_eq!(claims.subject(), "1234abcd.access");
+    }
+
+    #[test]
+    fn accepts_an_audience_sent_as_a_bare_string() {
+        // The shape Cloudflare Access actually sends for a single-application
+        // token, and the one that broke the first real request through Access:
+        // it failed while parsing the claims, so a perfectly valid token was
+        // reported as "Invalid Access token".
+        //
+        // The audience here is a placeholder. A real AUD tag is not a
+        // credential — it identifies an Access application and cannot mint or
+        // forge anything — but it is deployment configuration, and this
+        // repository is public.
+        let claims: AccessClaims = serde_json::from_str(
+            r#"{"aud":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "iss":"https://team.cloudflareaccess.com","exp":9999999999,
+                "common_name":"vetting-worker"}"#,
+        )
+        .expect("a string audience must deserialize");
+
+        assert_eq!(
+            claims.aud,
+            vec!["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]
+        );
+        assert_eq!(claims.subject(), "vetting-worker");
+    }
+
+    #[test]
+    fn still_accepts_an_audience_sent_as_an_array() {
+        let claims: AccessClaims = serde_json::from_str(
+            r#"{"aud":["one","two"],"iss":"https://team.cloudflareaccess.com","exp":9999999999}"#,
+        )
+        .expect("an array audience must keep working");
+
+        assert_eq!(claims.aud, vec!["one", "two"]);
+    }
+
+    #[test]
+    fn rejects_an_audience_that_is_neither() {
+        // Tolerating the two shapes the spec allows is not the same as
+        // tolerating anything.
+        let err = serde_json::from_str::<AccessClaims>(
+            r#"{"aud":42,"iss":"https://team.cloudflareaccess.com","exp":9999999999}"#,
+        );
+        assert!(err.is_err());
     }
 
     #[test]
