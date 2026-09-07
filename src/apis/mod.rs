@@ -12,6 +12,7 @@ pub mod issue_invite_code;
 pub mod list_admins;
 pub mod login;
 pub mod remove_admin;
+pub mod revoke_invite_codes;
 pub mod validate_otp;
 pub mod verify_otp;
 
@@ -25,6 +26,7 @@ pub use issue_invite_code::*;
 pub use list_admins::*;
 pub use login::*;
 pub use remove_admin::*;
+pub use revoke_invite_codes::*;
 pub use validate_otp::*;
 pub use verify_otp::*;
 

@@ -9,8 +9,8 @@ use invite_code_manager::access::AccessConfig;
 use invite_code_manager::apis::{
     add_admin_handler, create_invite_codes_handler, disable_invite_codes_handler,
     generate_otp_handler, get_invite_codes_handler, healthcheck_handler, issue_invite_code_handler,
-    list_admins_handler, login_user, remove_admin_handler, validate_otp_handler,
-    verify_otp_handler,
+    list_admins_handler, login_user, remove_admin_handler, revoke_invite_codes_handler,
+    validate_otp_handler, verify_otp_handler,
 };
 use invite_code_manager::config::Config;
 use invite_code_manager::state::AppState;
@@ -39,6 +39,7 @@ use utoipa_swagger_ui::SwaggerUi;
         invite_code_manager::apis::issue_invite_code::issue_invite_code_handler,
         invite_code_manager::apis::get_invite_codes::get_invite_codes_handler,
         invite_code_manager::apis::disable_invite_codes::disable_invite_codes_handler,
+        invite_code_manager::apis::revoke_invite_codes::revoke_invite_codes_handler,
     ),
     components(
         schemas(
@@ -251,6 +252,10 @@ async fn main() {
         .route("/invite-codes/issue", post(issue_invite_code_handler))
         .route("/invite-codes", get(get_invite_codes_handler))
         .route("/disable-invite-codes", post(disable_invite_codes_handler))
+        // Machine-facing counterpart, authenticated by Cloudflare Access rather
+        // than the browser session, exactly as /invite-codes/issue is to
+        // /create-invite-codes.
+        .route("/invite-codes/disable", post(revoke_invite_codes_handler))
         .with_state(app_state)
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()));
 
