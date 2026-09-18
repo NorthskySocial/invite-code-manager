@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 tokio = { version = "1.38.0", features = ["rt-multi-thread", "macros", "net"] }
 axum = "0.8.4"
-tower-http = { version = "0.6.2", features = ["cors"] }
+tower-http = { version = "0.6.2", features = ["cors", "trace"] }
 tower-sessions = { version = "0.15.0", features = ["signed"] }
 serde = { version = "1.0.204", features = ["derive"] }
 dotenvy = "0.15.7"

@@ -18,8 +18,10 @@ use invite_code_manager::{DbConn, cli};
 use std::env;
 use std::net::SocketAddr;
 use tower_http::cors::{Any, CorsLayer};
+use tower_http::trace::{DefaultOnResponse, TraceLayer};
 use tower_sessions::cookie::SameSite;
 use tower_sessions::{MemoryStore, SessionManagerLayer};
+use tracing::{Level, info_span};
 use tracing_subscriber::EnvFilter;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
@@ -259,7 +261,17 @@ async fn main() {
         .with_state(app_state)
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()));
 
-    let app = app.layer(session_layer).layer(cors);
+    let app = app.layer(session_layer).layer(cors).layer(
+        TraceLayer::new_for_http()
+            .make_span_with(|request: &axum::http::Request<_>| {
+                info_span!(
+                    "http_request",
+                    method = %request.method(),
+                    uri = %request.uri(),
+                )
+            })
+            .on_response(DefaultOnResponse::new().level(Level::INFO)),
+    );
 
     let addr = SocketAddr::from(([0, 0, 0, 0], server_port));
     tracing::info!("listening on {}", addr);
