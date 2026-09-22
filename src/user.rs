@@ -125,6 +125,13 @@ pub struct InviteCodeAdminData {
     pub otp_auth_url: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Debug, ToSchema)]
+pub struct InviteCodeAdminSummary {
+    pub username: String,
+    pub otp_enabled: bool,
+    pub otp_verified: bool,
+}
+
 #[derive(Serialize, Deserialize, ToSchema)]
 pub struct CreateInviteCodeSchema {
     #[serde(rename = "codeCount")]

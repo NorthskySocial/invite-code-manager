@@ -1,7 +1,7 @@
 use crate::DbConn;
-use crate::apis::invite_code_admin_to_response;
+use crate::apis::invite_code_admin_to_summary;
 use crate::error::AppError;
-use crate::user::{InviteCodeAdmin, InviteCodeAdminData};
+use crate::user::{InviteCodeAdmin, InviteCodeAdminSummary};
 use axum::extract::State;
 use axum::{Json, response::IntoResponse};
 use diesel::{QueryDsl, RunQueryDsl, SelectableHelper};
@@ -11,7 +11,7 @@ use utoipa::ToSchema;
 #[derive(Serialize, Deserialize, ToSchema)]
 pub struct ListAdminsResponse {
     pub status: String,
-    pub admins: Vec<InviteCodeAdminData>,
+    pub admins: Vec<InviteCodeAdminSummary>,
 }
 
 #[tracing::instrument(skip(db_pool, _user))]
@@ -50,8 +50,8 @@ pub async fn list_admins_handler(
         .map_err(|e| AppError::DatabaseError(e.to_string()))?
         .map_err(|e| AppError::DatabaseError(e.to_string()))?;
 
-    let admins_data: Vec<InviteCodeAdminData> =
-        results.iter().map(invite_code_admin_to_response).collect();
+    let admins_data: Vec<InviteCodeAdminSummary> =
+        results.iter().map(invite_code_admin_to_summary).collect();
 
     let response = ListAdminsResponse {
         status: "success".to_string(),

@@ -47,6 +47,7 @@ use utoipa_swagger_ui::SwaggerUi;
         schemas(
             invite_code_manager::LoginUser,
             invite_code_manager::user::InviteCodeAdminData,
+            invite_code_manager::user::InviteCodeAdminSummary,
             invite_code_manager::user::VerifyOTPSchema,
             invite_code_manager::user::CreateInviteCodeSchema,
             invite_code_manager::user::IssueInviteCodeSchema,
