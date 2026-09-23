@@ -121,7 +121,6 @@ pub struct InviteCodeAdminData {
     pub username: String,
     pub otp_enabled: bool,
     pub otp_verified: bool,
-    pub otp_base32: Option<String>,
     pub otp_auth_url: Option<String>,
 }
 

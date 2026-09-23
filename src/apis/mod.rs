@@ -73,7 +73,6 @@ pub fn invite_code_admin_to_response(user: &InviteCodeAdmin) -> InviteCodeAdminD
     InviteCodeAdminData {
         username: user.username.to_owned(),
         otp_auth_url: user.otp_auth_url.to_owned(),
-        otp_base32: user.otp_base32.to_owned(),
         otp_enabled: user.otp_enabled.eq(&1),
         otp_verified: user.otp_verified.eq(&1),
     }
