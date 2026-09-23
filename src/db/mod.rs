@@ -2,7 +2,7 @@ use crate::DbConn;
 use crate::schema::invite_code_admin::{otp_auth_url, otp_base32};
 use crate::user::InviteCodeAdmin;
 use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl, SelectableHelper, SqliteConnection};
-use rand::RngCore;
+use rand::Rng;
 
 pub async fn fetch_invite_code_admin_login(
     db: &DbConn,

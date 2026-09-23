@@ -1,4 +1,4 @@
-FROM rust:1.92-trixie@sha256:f58923369ba295ae1f60bc49d03f2c955a5c93a0b7d49acfb2b2a65bebaf350d AS builder
+FROM rust:1.98-trixie@sha256:a8a5f0a1e5fe7dfe1d352591e4a1c7dd2c08fd70475cae872cf3458ba0df0546 AS builder
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends cmake libsqlite3-dev pkg-config \
@@ -15,7 +15,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     cargo build --release --locked \
     && cp target/release/invite_code_manager /app/invite_code_manager
 
-FROM debian:trixie-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258
+FROM debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates libsqlite3-0 \
