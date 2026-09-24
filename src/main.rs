@@ -9,18 +9,19 @@ use invite_code_manager::access::AccessConfig;
 use invite_code_manager::apis::{
     add_admin_handler, create_invite_codes_handler, disable_invite_codes_handler,
     generate_otp_handler, get_invite_codes_handler, healthcheck_handler, issue_invite_code_handler,
-    list_admins_handler, login_user, remove_admin_handler, revoke_invite_codes_handler,
-    validate_otp_handler, verify_otp_handler,
+    list_admins_handler, login_user, logout_user, remove_admin_handler,
+    revoke_invite_codes_handler, validate_otp_handler, verify_otp_handler,
 };
 use invite_code_manager::config::Config;
 use invite_code_manager::state::AppState;
 use invite_code_manager::{DbConn, cli};
 use std::env;
 use std::net::SocketAddr;
+use time::Duration;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::{DefaultOnResponse, TraceLayer};
 use tower_sessions::cookie::SameSite;
-use tower_sessions::{MemoryStore, SessionManagerLayer};
+use tower_sessions::{Expiry, MemoryStore, SessionManagerLayer};
 use tracing::{Level, info_span};
 use tracing_subscriber::EnvFilter;
 use utoipa::OpenApi;
@@ -31,6 +32,7 @@ use utoipa_swagger_ui::SwaggerUi;
     paths(
         invite_code_manager::apis::health::healthcheck_handler,
         invite_code_manager::apis::login::login_user,
+        invite_code_manager::apis::login::logout_user,
         invite_code_manager::apis::add_admin::add_admin_handler,
         invite_code_manager::apis::list_admins::list_admins_handler,
         invite_code_manager::apis::remove_admin::remove_admin_handler,
@@ -229,6 +231,8 @@ async fn main() {
 
     let session_store = MemoryStore::default();
     let session_layer = SessionManagerLayer::new(session_store)
+        .with_expiry(Expiry::OnInactivity(Duration::hours(8)))
+        .with_always_save(true)
         .with_http_only(true)
         .with_same_site(SameSite::Strict)
         .with_secure(session_cookie_secure)
@@ -242,6 +246,7 @@ async fn main() {
     let app = Router::new()
         .route("/health", get(healthcheck_handler))
         .route("/auth/login", post(login_user))
+        .route("/auth/logout", post(logout_user))
         .route(
             "/admins",
             get(list_admins_handler)
