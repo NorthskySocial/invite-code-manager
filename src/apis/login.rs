@@ -7,6 +7,26 @@ use axum::extract::State;
 use axum::{Json, http::StatusCode, response::IntoResponse};
 use tower_sessions::Session;
 
+#[tracing::instrument(skip(session))]
+#[utoipa::path(
+    post,
+    path = "/auth/logout",
+    responses(
+        (status = 204, description = "Logout successful")
+    ),
+    security(
+        ("session_cookie" = [])
+    )
+)]
+pub async fn logout_user(session: Session) -> Result<StatusCode, AppError> {
+    session
+        .delete()
+        .await
+        .map_err(|e| AppError::InternalError(format!("Session error: {:?}", e)))?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 #[tracing::instrument(skip(db_pool, body, session))]
 #[utoipa::path(
     post,
@@ -34,6 +54,10 @@ pub async fn login_user(
             body.username
         ))),
         Some(user) => {
+            session
+                .flush()
+                .await
+                .map_err(|e| AppError::InternalError(format!("Session error: {:?}", e)))?;
             session
                 .remove::<String>("otp_validated")
                 .await
@@ -123,6 +147,14 @@ mod tests {
     async fn seed_otp_validated(session: Session) -> Result<StatusCode, AppError> {
         session
             .insert("otp_validated", "y")
+            .await
+            .map_err(|e| AppError::InternalError(format!("Session error: {:?}", e)))?;
+        Ok(StatusCode::NO_CONTENT)
+    }
+
+    async fn seed_authenticated_session(session: Session) -> Result<StatusCode, AppError> {
+        session
+            .insert("username", "testuser")
             .await
             .map_err(|e| AppError::InternalError(format!("Session error: {:?}", e)))?;
         Ok(StatusCode::NO_CONTENT)
@@ -257,6 +289,62 @@ mod tests {
             .unwrap();
         let admin_resp = app.oneshot(admin_req).await.unwrap();
 
+        assert_eq!(admin_resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_logout_invalidates_session() {
+        let pool = setup_test_db("logout_invalidates_session").await;
+        let db_conn = DbConn(pool.clone());
+        create_invite_code_admin(&db_conn, "testuser", "testpassword")
+            .await
+            .expect("Failed to create user");
+
+        let app = Router::new()
+            .route("/auth/logout", post(logout_user))
+            .route("/admins", get(list_admins_handler))
+            .route("/test/seed-session", post(seed_authenticated_session))
+            .layer(SessionManagerLayer::new(MemoryStore::default()))
+            .with_state(db_conn);
+
+        let seed_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/test/seed-session")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let cookie = session_cookie(&seed_resp).expect("Expected a session cookie");
+
+        let logout_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/auth/logout")
+                    .header("cookie", &cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(logout_resp.status(), StatusCode::NO_CONTENT);
+
+        let admin_resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/admins")
+                    .header("cookie", cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
         assert_eq!(admin_resp.status(), StatusCode::UNAUTHORIZED);
     }
 }
