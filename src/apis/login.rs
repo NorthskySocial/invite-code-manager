@@ -240,7 +240,7 @@ mod tests {
         let conn = pool.get().await.expect("Failed to get connection");
         conn.interact(|conn| {
             diesel::sql_query(
-                "UPDATE invite_code_admin SET otp_enabled = 1, otp_verified = 1 WHERE username = 'testuser'",
+                "UPDATE invite_code_admin SET otp_enabled = 1, otp_verified = 1, otp_auth_url = 'otpauth://totp/InviteCodeManager:testuser?secret=TESTSECRET' WHERE username = 'testuser'",
             )
             .execute(conn)
         })
@@ -280,6 +280,13 @@ mod tests {
         let auth_cookie = session_cookie(&login_resp)
             .or_else(|| session_cookie(&seed_resp))
             .expect("Expected a session cookie after login");
+        let response_body = axum::body::to_bytes(login_resp.into_body(), usize::MAX)
+            .await
+            .expect("Failed to read login response");
+        let response_json: serde_json::Value = serde_json::from_slice(&response_body)
+            .expect("Login response must be JSON");
+        assert_eq!(response_json["otp_verified"], true);
+        assert_eq!(response_json["otp_auth_url"], serde_json::Value::Null);
 
         let admin_req = Request::builder()
             .method("GET")

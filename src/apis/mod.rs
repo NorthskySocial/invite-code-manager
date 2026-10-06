@@ -72,7 +72,11 @@ pub struct InviteCodes {
 pub fn invite_code_admin_to_response(user: &InviteCodeAdmin) -> InviteCodeAdminData {
     InviteCodeAdminData {
         username: user.username.to_owned(),
-        otp_auth_url: user.otp_auth_url.to_owned(),
+        otp_auth_url: if user.otp_verified == 1 {
+            None
+        } else {
+            user.otp_auth_url.to_owned()
+        },
         otp_enabled: user.otp_enabled.eq(&1),
         otp_verified: user.otp_verified.eq(&1),
     }
