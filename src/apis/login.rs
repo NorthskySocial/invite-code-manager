@@ -283,8 +283,8 @@ mod tests {
         let response_body = axum::body::to_bytes(login_resp.into_body(), usize::MAX)
             .await
             .expect("Failed to read login response");
-        let response_json: serde_json::Value = serde_json::from_slice(&response_body)
-            .expect("Login response must be JSON");
+        let response_json: serde_json::Value =
+            serde_json::from_slice(&response_body).expect("Login response must be JSON");
         assert_eq!(response_json["otp_verified"], true);
         assert_eq!(response_json["otp_auth_url"], serde_json::Value::Null);
 
