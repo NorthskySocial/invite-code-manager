@@ -4,13 +4,13 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "net"] }
+tokio = { version = "1.54.0", features = ["rt-multi-thread", "macros", "net"] }
 axum = "0.8.9"
 tower-http = { version = "0.7.1", features = ["cors", "trace"] }
 tower-sessions = { version = "0.15.0", features = ["signed"] }
 serde = { version = "1.0.229", features = ["derive"] }
 dotenvy = "0.15.7"
-diesel = { version = "2.3.13", features = ["sqlite"] }
+diesel = { version = "2.3.14", features = ["sqlite"] }
 deadpool-diesel = { version = "0.7.0", features = ["sqlite"] }
 rand = "0.10.3"
 totp-rs = { version = "5.7.2", features = ["gen_secret"] }
@@ -29,11 +29,11 @@ utoipa-swagger-ui = { version = "9.0.2", default-features = false, features = [
     "vendored",
 ] }
 jsonwebtoken = { version = "10.4.0", features = ["rust_crypto"] }
-serde_json = "1.0.151"
+serde_json = "1.0.154"
 time = "0.3.55"
 
 [dev-dependencies]
-serde_json = "1.0.151"
+serde_json = "1.0.154"
 tower = { version = "0.5.3", features = ["util"] }
 
 [profile.dev]
